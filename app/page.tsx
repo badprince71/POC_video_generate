@@ -128,7 +128,7 @@ export default function AIVideoGeneratorPOC() {
         id: i + 1,
         timestamp: `0:${(i * 3).toString().padStart(2, "0")}`,
         imageUrl: i === 0 ? imagePreview : imageUrls[i],
-        description: getFrameDescription(i, prompt),
+        description: getFrameDescription(i),
         prompt: `Frame ${i + 1}: ${getFrameDescription(i)}`,
       }
       newFrames.push(frame)
