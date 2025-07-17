@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,16 +20,10 @@ import {
   RefreshCw,
   ArrowRight,
 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-
-interface UploadedImage {
-  id: string
-  file: File
-  preview: string
-  name: string
-}
 
 interface VideoFrame {
   id: number
@@ -36,7 +31,6 @@ interface VideoFrame {
   imageUrl: string
   description: string
   prompt: string
-  sourceImageId?: string
 }
 
 interface GeneratedVideo {
@@ -51,7 +45,8 @@ interface GeneratedVideo {
 type GenerationStep = "input" | "generating-frames" | "frames-ready" | "generating-video" | "video-ready"
 
 export default function AIVideoGeneratorPOC() {
-  const [selectedImages, setSelectedImages] = useState<UploadedImage[]>([])
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string>("")
   const [prompt, setPrompt] = useState("")
   const [currentStep, setCurrentStep] = useState<GenerationStep>("input")
   const [generatedFrames, setGeneratedFrames] = useState<VideoFrame[]>([])
@@ -59,71 +54,97 @@ export default function AIVideoGeneratorPOC() {
   const [frameGenerationProgress, setFrameGenerationProgress] = useState(0)
   const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
+  const [isGenerationStopped, setIsGenerationStopped] = useState(false)
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (files && files.length > 0) {
-      const fileArray = Array.from(files)
-
-      fileArray.forEach((file, index) => {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const newImage: UploadedImage = {
-            id: `img-${Date.now()}-${index}`,
-            file: file,
-            preview: e.target?.result as string,
-            name: file.name,
-          }
-
-          setSelectedImages((prev) => [...prev, newImage])
-        }
-        reader.readAsDataURL(file)
-      })
+    const file = event.target.files?.[0]
+    if (file) {
+      setSelectedImage(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string)
+      }
+      reader.readAsDataURL(file)
     }
-    // Reset the input value
-    event.target.value = ""
-  }
-
-  const removeImage = (imageId: string) => {
-    setSelectedImages((prev) => prev.filter((img) => img.id !== imageId))
-  }
-
-  const removeAllImages = () => {
-    setSelectedImages([])
   }
 
   const generateFrames = async () => {
-    if (selectedImages.length === 0 || !prompt) return
+    if (!selectedImage || !prompt) return
 
     setCurrentStep("generating-frames")
     setFrameGenerationProgress(0)
+    setIsGenerationStopped(false)
 
     // Simulate frame generation process
-    const frameCount = 8
+    const frameCount = 5
     const newFrames: VideoFrame[] = []
 
+    const response = await fetch("/api/generate_images", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ 
+        image: imagePreview.replace(/^data:image\/\w+;base64,/, ""), 
+        prompt: prompt, 
+        numImages: frameCount 
+      }),
+    })
+    .then((res) => res.json())
+    .catch((error) => {
+      console.error("Error generating images:", error)
+      return { error: "Failed to generate images" }
+    })
+
+    if (response.error) {
+      console.error("API Error:", response.error)
+      alert(`Error: ${response.error}`)
+      setCurrentStep("input")
+      return
+    }
+
+    const imageUrls = response.imageUrls || []
+    
+    console.log(`Generated ${response.generatedCount}/${response.requestedCount} images successfully`)
+
+    console.log("imageUrls", imageUrls)
+    
     for (let i = 0; i < frameCount; i++) {
+      // Check if generation was stopped
+      if (isGenerationStopped) {
+        setCurrentStep("input")
+        return
+      }
       // Simulate processing time for each frame
       await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Use different source images for variety
-      const sourceImage = selectedImages[i % selectedImages.length]
+      
+      // Check again after the delay
+      if (isGenerationStopped) {
+        setCurrentStep("input")
+        return
+      }
 
       const frame: VideoFrame = {
         id: i + 1,
         timestamp: `0:${(i * 3).toString().padStart(2, "0")}`,
-        imageUrl: i === 0 ? sourceImage.preview : `/placeholder.svg?height=300&width=400&text=Frame ${i + 1}`,
+        imageUrl: i === 0 ? imagePreview : imageUrls[i],
         description: getFrameDescription(i, prompt),
         prompt: `Frame ${i + 1}: ${getFrameDescription(i, prompt)}`,
-        sourceImageId: sourceImage.id,
       }
-
       newFrames.push(frame)
       setGeneratedFrames([...newFrames])
       setFrameGenerationProgress(((i + 1) / frameCount) * 100)
     }
 
-    setCurrentStep("frames-ready")
+    if (!isGenerationStopped) {
+      setCurrentStep("frames-ready")
+    }
+  }
+
+
+  const stopGeneration = () => {
+    setIsGenerationStopped(true)
+    setCurrentStep("input")
   }
 
   const generateVideo = async () => {
@@ -146,7 +167,7 @@ export default function AIVideoGeneratorPOC() {
       await new Promise((resolve) => setTimeout(resolve, 2000))
       setVideoGenerationProgress(((i + 1) / steps.length) * 100)
     }
-
+    console.log("generatedFrames", generatedFrames)
     const video: GeneratedVideo = {
       id: "generated-" + Date.now(),
       title: "Your Generated Video",
@@ -181,6 +202,7 @@ export default function AIVideoGeneratorPOC() {
     setFrameGenerationProgress(0)
     setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
+    setIsGenerationStopped(false)
   }
 
   const regenerateFrames = () => {
@@ -191,7 +213,8 @@ export default function AIVideoGeneratorPOC() {
     setFrameGenerationProgress(0)
     setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
-    // Keep the existing prompt and images so user can modify them
+    setIsGenerationStopped(false)
+    // Keep the existing prompt and image so user can modify them
   }
 
   const FrameViewer = ({ frames }: { frames: VideoFrame[] }) => {
@@ -202,12 +225,7 @@ export default function AIVideoGeneratorPOC() {
         {/* Frame Navigation */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-              {frames.length} frames generated
-            </span>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-              {selectedImages.length} source images used
-            </span>
+            <Badge variant="secondary">{frames.length} frames generated</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -244,19 +262,8 @@ export default function AIVideoGeneratorPOC() {
         {/* Frame Info */}
         <div className="bg-gray-50 rounded-lg p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-white text-gray-700 border border-gray-200">
-              {frames[selectedFrameIndex]?.timestamp}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</span>
-              {frames[selectedFrameIndex]?.sourceImageId && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                  Source:{" "}
-                  {selectedImages.find((img) => img.id === frames[selectedFrameIndex]?.sourceImageId)?.name ||
-                    "Unknown"}
-                </span>
-              )}
-            </div>
+            <Badge variant="outline">{frames[selectedFrameIndex]?.timestamp}</Badge>
+            <span className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</span>
           </div>
           <p className="text-sm text-gray-700">{frames[selectedFrameIndex]?.description}</p>
         </div>
@@ -300,7 +307,7 @@ export default function AIVideoGeneratorPOC() {
             AI Video Generator POC
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Upload multiple photos and create personalized animated videos with AI
+            Two-step process: First generate frames from your prompt, then create the final video
           </p>
         </div>
 
@@ -347,100 +354,78 @@ export default function AIVideoGeneratorPOC() {
                       <Upload className="h-5 w-5" />
                       Step 1: Input Configuration
                     </CardTitle>
-                    <CardDescription>Upload multiple photos and describe the video you want to create</CardDescription>
+                    <CardDescription>Upload your photo and describe the video you want to create</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {generatedFrames.length === 0 && currentStep === "input" && (
                       <Alert className="mb-4">
                         <AlertDescription>
-                          You can now modify your photos or prompt and generate new frames.
+                          You can now modify your prompt or image and generate new frames.
                         </AlertDescription>
                       </Alert>
                     )}
-
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <Label htmlFor="image-upload">Upload Your Photos</Label>
-                        {selectedImages.length > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={removeAllImages}
-                            disabled={currentStep === "generating-frames"}
-                          >
-                            Clear All ({selectedImages.length})
-                          </Button>
-                        )}
-                      </div>
-
+                      <Label htmlFor="image-upload">Upload Your Photo</Label>
                       <Input
                         id="image-upload"
                         type="file"
                         accept="image/*"
-                        multiple
                         onChange={handleImageUpload}
                         className="mt-1"
                         disabled={currentStep === "generating-frames"}
                       />
-
-                      {selectedImages.length > 0 && (
-                        <div className="mt-3">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 mb-3">
-                            {selectedImages.length} photo{selectedImages.length !== 1 ? "s" : ""} selected
-                          </span>
-
-                          <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                            {selectedImages.map((image) => (
-                              <div key={image.id} className="relative group">
-                                <img
-                                  src={image.preview || "/placeholder.svg"}
-                                  alt={image.name}
-                                  className="w-full h-20 object-cover rounded border"
-                                />
-                                <button
-                                  onClick={() => removeImage(image.id)}
-                                  disabled={currentStep === "generating-frames"}
-                                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
+                      {imagePreview && (
+                        <div className="mt-2">
+                          <img
+                            src={imagePreview || "/placeholder.svg"}
+                            alt="Preview"
+                            className="w-32 h-32 object-cover rounded-lg border"
+                          />
                         </div>
                       )}
                     </div>
-
                     <div>
                       <Label htmlFor="prompt">Video Description</Label>
                       <Textarea
                         id="prompt"
-                        placeholder="Describe your video... e.g., 'Create a birthday invitation video where characters are celebrating with confetti and balloons in a party setting'"
+                        placeholder="Describe your video... e.g., 'Create a birthday invitation video where I'm celebrating with confetti and balloons in a party setting'"
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         className="mt-1 min-h-[100px]"
                         disabled={currentStep === "generating-frames"}
                       />
+                      
                     </div>
 
-                    <Button
-                      onClick={generateFrames}
-                      disabled={selectedImages.length === 0 || !prompt || currentStep === "generating-frames"}
-                      className="w-full"
-                    >
-                      {currentStep === "generating-frames" ? (
-                        <>
-                          <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                          Generating Frames...
-                        </>
-                      ) : (
-                        <>
-                          <Grid3X3 className="h-4 w-4 mr-2" />
-                          Generate Frames
-                          {selectedImages.length > 0 && ` (${selectedImages.length} photos)`}
-                        </>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={generateFrames}
+                        disabled={!selectedImage || !prompt || currentStep === "generating-frames"}
+                        className="flex-1"
+                      >
+                        {currentStep === "generating-frames" ? (
+                          <>
+                            <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                            Generating Frames...
+                          </>
+                        ) : (
+                          <>
+                            <Grid3X3 className="h-4 w-4 mr-2" />
+                            Generate Frames
+                          </>
+                        )}
+                      </Button>
+                      
+                      {currentStep === "generating-frames" && (
+                        <Button
+                          onClick={stopGeneration}
+                          variant="outline"
+                          className="px-4"
+                        >
+                          Stop
+                        </Button>
                       )}
-                    </Button>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -450,7 +435,7 @@ export default function AIVideoGeneratorPOC() {
                       <Grid3X3 className="h-5 w-5" />
                       Frame Generation Progress
                     </CardTitle>
-                    <CardDescription>Individual frames are being generated from your photos and prompt</CardDescription>
+                    <CardDescription>Individual frames are being generated from your prompt</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {currentStep === "generating-frames" ? (
@@ -461,11 +446,7 @@ export default function AIVideoGeneratorPOC() {
                           </div>
                           <Progress value={frameGenerationProgress} className="w-full" />
                           <p className="text-sm text-gray-600 mt-2">
-                            Generating frame {Math.ceil((frameGenerationProgress / 100) * 8)} of 8
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {selectedImages.length > 0 &&
-                              `Using ${selectedImages.length} source photo${selectedImages.length !== 1 ? "s" : ""}`}
+                            Generating frame {Math.ceil((frameGenerationProgress / 100) * 5)} of 5
                           </p>
                         </div>
 
@@ -490,10 +471,7 @@ export default function AIVideoGeneratorPOC() {
                       <div className="aspect-video bg-gray-50 rounded-lg flex items-center justify-center">
                         <div className="text-center space-y-2">
                           <Grid3X3 className="h-12 w-12 mx-auto text-gray-300" />
-                          <p className="text-sm text-gray-500">Upload photos and enter a prompt to generate frames</p>
-                          {selectedImages.length > 0 && (
-                            <p className="text-xs text-gray-400">{selectedImages.length} photos ready</p>
-                          )}
+                          <p className="text-sm text-gray-500">Upload an image and enter a prompt to generate frames</p>
                         </div>
                       </div>
                     )}
@@ -514,7 +492,7 @@ export default function AIVideoGeneratorPOC() {
                       Step 2: Review Generated Frames
                     </CardTitle>
                     <CardDescription>
-                      Review your generated frames created from {selectedImages.length} source photos
+                      Review your generated frames and proceed to create the final video
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -527,7 +505,7 @@ export default function AIVideoGeneratorPOC() {
                         disabled={currentStep === "generating-video"}
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />
-                        Modify & Regenerate
+                        Modify Prompt & Regenerate
                       </Button>
 
                       {currentStep === "frames-ready" && (
@@ -572,9 +550,7 @@ export default function AIVideoGeneratorPOC() {
                         <Play className="h-5 w-5" />
                         Generated Video
                       </CardTitle>
-                      <CardDescription>
-                        Your personalized animated video created from {selectedImages.length} photos is ready!
-                      </CardDescription>
+                      <CardDescription>Your personalized animated video is ready!</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
@@ -582,7 +558,6 @@ export default function AIVideoGeneratorPOC() {
                           <Video className="h-12 w-12 mx-auto text-gray-400" />
                           <p className="text-sm text-gray-600">Video Preview</p>
                           <p className="text-xs text-gray-500">Duration: {generatedVideo.duration}</p>
-                          <p className="text-xs text-gray-500">Created from {selectedImages.length} source photos</p>
                         </div>
                       </div>
 
@@ -602,45 +577,40 @@ export default function AIVideoGeneratorPOC() {
             )}
           </TabsContent>
 
-          {/* Other tabs with simplified badge styling */}
           <TabsContent value="workflow" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Multi-Photo AI Video Generation Workflow</CardTitle>
-                <CardDescription>
-                  How multiple photos are used to create diverse and engaging video content
-                </CardDescription>
+                <CardTitle>Two-Step AI Video Generation Workflow</CardTitle>
+                <CardDescription>Detailed breakdown of the frame-first video generation process</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-8">
                   {/* Step 1 */}
                   <div className="border-l-4 border-blue-500 pl-6">
-                    <h3 className="text-xl font-semibold mb-4 text-blue-600">Step 1: Multi-Photo Frame Generation</h3>
+                    <h3 className="text-xl font-semibold mb-4 text-blue-600">Step 1: Frame Generation</h3>
                     <div className="space-y-4">
                       {[
                         {
-                          title: "Photo Analysis",
+                          title: "Prompt Analysis",
                           description:
-                            "AI analyzes all uploaded photos to extract facial features, poses, and characteristics from each image",
-                          tools: ["MediaPipe", "Face++", "Computer Vision APIs"],
+                            "AI analyzes the text prompt to understand scene requirements, character actions, and visual elements",
+                          tools: ["GPT-4", "Claude", "Custom NLP models"],
                         },
                         {
                           title: "Character Modeling",
                           description:
-                            "Create consistent character models that can represent different poses and expressions from multiple photos",
-                          tools: ["3D Face Reconstruction", "Character Consistency Models"],
+                            "Extract facial features from uploaded photo and create consistent character model",
+                          tools: ["MediaPipe", "Face++", "Custom ML models"],
                         },
                         {
                           title: "Scene Planning",
-                          description:
-                            "Plan 8 keyframes using different source photos to create variety and natural progression",
-                          tools: ["Storyboard AI", "Multi-source planning algorithms"],
+                          description: "Plan 8 keyframes with specific timestamps and scene descriptions",
+                          tools: ["Storyboard AI", "Scene planning algorithms"],
                         },
                         {
                           title: "Frame Generation",
-                          description:
-                            "Generate frames using different source photos to maintain variety while ensuring character consistency",
-                          tools: ["Stable Diffusion", "Multi-reference generation", "Style transfer"],
+                          description: "Generate individual frames maintaining character consistency across all scenes",
+                          tools: ["Stable Diffusion", "Midjourney API", "Custom image models"],
                         },
                       ].map((substep, index) => (
                         <div key={index} className="flex gap-4">
@@ -654,12 +624,9 @@ export default function AIVideoGeneratorPOC() {
                             <p className="text-gray-600 text-sm">{substep.description}</p>
                             <div className="flex flex-wrap gap-1">
                               {substep.tools.map((tool, toolIndex) => (
-                                <span
-                                  key={toolIndex}
-                                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-700 border border-gray-200"
-                                >
+                                <Badge key={toolIndex} variant="outline" className="text-xs">
                                   {tool}
-                                </span>
+                                </Badge>
                               ))}
                             </div>
                           </div>
@@ -668,28 +635,51 @@ export default function AIVideoGeneratorPOC() {
                     </div>
                   </div>
 
-                  {/* Benefits of Multi-Photo Approach */}
+                  {/* Step 2 */}
                   <div className="border-l-4 border-green-500 pl-6">
-                    <h3 className="text-xl font-semibold mb-4 text-green-600">Benefits of Multiple Photos</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <h4 className="font-medium">Visual Variety</h4>
-                        <ul className="text-sm text-gray-600 space-y-1">
-                          <li>• Different poses and expressions</li>
-                          <li>• Various lighting conditions</li>
-                          <li>• Multiple angles and perspectives</li>
-                          <li>• Natural progression through scenes</li>
-                        </ul>
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="font-medium">Quality Improvement</h4>
-                        <ul className="text-sm text-gray-600 space-y-1">
-                          <li>• Better character representation</li>
-                          <li>• More natural animations</li>
-                          <li>• Reduced repetition</li>
-                          <li>• Enhanced realism</li>
-                        </ul>
-                      </div>
+                    <h3 className="text-xl font-semibold mb-4 text-green-600">Step 2: Video Compilation</h3>
+                    <div className="space-y-4">
+                      {[
+                        {
+                          title: "Frame Consistency Check",
+                          description: "Analyze generated frames for character consistency and visual coherence",
+                          tools: ["Computer Vision", "Consistency algorithms"],
+                        },
+                        {
+                          title: "Transition Generation",
+                          description: "Create smooth transitions between keyframes using interpolation",
+                          tools: ["Motion interpolation", "Optical flow"],
+                        },
+                        {
+                          title: "Effects and Enhancement",
+                          description: "Add motion blur, lighting effects, and visual enhancements",
+                          tools: ["After Effects API", "Custom shaders"],
+                        },
+                        {
+                          title: "Video Rendering",
+                          description: "Compile frames into final MP4 with proper timing and compression",
+                          tools: ["FFmpeg", "Video codecs", "Compression algorithms"],
+                        },
+                      ].map((substep, index) => (
+                        <div key={index} className="flex gap-4">
+                          <div className="flex-shrink-0">
+                            <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-sm font-medium">
+                              {index + 1}
+                            </div>
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <h4 className="font-semibold">{substep.title}</h4>
+                            <p className="text-gray-600 text-sm">{substep.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {substep.tools.map((tool, toolIndex) => (
+                                <Badge key={toolIndex} variant="outline" className="text-xs">
+                                  {tool}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -700,31 +690,31 @@ export default function AIVideoGeneratorPOC() {
           <TabsContent value="tools" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>AI Tools for Multi-Photo Processing</CardTitle>
+                <CardTitle>AI Tools for Two-Step Process</CardTitle>
                 <CardDescription>
-                  Specialized tools for handling multiple source images in video generation
+                  Tools categorized by their role in frame generation vs video compilation
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Multi-Photo Processing Tools */}
+                  {/* Frame Generation Tools */}
                   <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-blue-600">Multi-Photo Processing</h3>
+                    <h3 className="text-lg font-semibold text-blue-600">Step 1: Frame Generation Tools</h3>
                     {[
                       {
-                        name: "Face Consistency Models",
-                        description: "Maintain character identity across different source photos",
-                        features: ["Identity preservation", "Multi-angle support", "Expression mapping"],
+                        name: "Stable Diffusion",
+                        description: "Generate consistent character images across frames",
+                        features: ["Character consistency", "Style control", "Batch generation"],
                       },
                       {
-                        name: "Pose Transfer AI",
-                        description: "Transfer poses and expressions between different photos",
-                        features: ["Pose estimation", "Expression transfer", "Body language mapping"],
+                        name: "Midjourney API",
+                        description: "High-quality artistic frame generation",
+                        features: ["Artistic styles", "Character reference", "Scene composition"],
                       },
                       {
-                        name: "Style Harmonization",
-                        description: "Ensure consistent visual style across frames from different photos",
-                        features: ["Color matching", "Lighting normalization", "Style consistency"],
+                        name: "DALL-E 3",
+                        description: "Prompt-based frame generation with character consistency",
+                        features: ["Text understanding", "Character persistence", "Scene variety"],
                       },
                     ].map((tool, index) => (
                       <Card key={index}>
@@ -735,12 +725,9 @@ export default function AIVideoGeneratorPOC() {
                         <CardContent>
                           <div className="flex flex-wrap gap-1">
                             {tool.features.map((feature, featureIndex) => (
-                              <span
-                                key={featureIndex}
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800"
-                              >
+                              <Badge key={featureIndex} variant="secondary" className="text-xs">
                                 {feature}
-                              </span>
+                              </Badge>
                             ))}
                           </div>
                         </CardContent>
@@ -748,24 +735,24 @@ export default function AIVideoGeneratorPOC() {
                     ))}
                   </div>
 
-                  {/* Enhanced Video Tools */}
+                  {/* Video Compilation Tools */}
                   <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-green-600">Enhanced Video Generation</h3>
+                    <h3 className="text-lg font-semibold text-green-600">Step 2: Video Compilation Tools</h3>
                     {[
                       {
-                        name: "Multi-Source Runway ML",
-                        description: "Advanced video generation supporting multiple reference images",
-                        features: ["Multi-reference input", "Character consistency", "Scene variety"],
+                        name: "Runway ML",
+                        description: "Frame-to-video compilation with AI enhancement",
+                        features: ["Frame interpolation", "Motion generation", "Video effects"],
                       },
                       {
-                        name: "Character-Aware Pika",
-                        description: "Video generation with character identity preservation across sources",
-                        features: ["Identity tracking", "Multi-photo support", "Natural transitions"],
+                        name: "Pika Labs",
+                        description: "Transform static frames into animated sequences",
+                        features: ["Animation generation", "Smooth transitions", "Style preservation"],
                       },
                       {
-                        name: "Advanced Stable Video",
-                        description: "Open-source video generation with multi-image conditioning",
-                        features: ["Multiple conditioning", "Custom training", "Flexible input"],
+                        name: "FFmpeg + AI",
+                        description: "Professional video rendering with AI-enhanced transitions",
+                        features: ["Video encoding", "Transition effects", "Quality optimization"],
                       },
                     ].map((tool, index) => (
                       <Card key={index}>
@@ -776,12 +763,9 @@ export default function AIVideoGeneratorPOC() {
                         <CardContent>
                           <div className="flex flex-wrap gap-1">
                             {tool.features.map((feature, featureIndex) => (
-                              <span
-                                key={featureIndex}
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800"
-                              >
+                              <Badge key={featureIndex} variant="secondary" className="text-xs">
                                 {feature}
-                              </span>
+                              </Badge>
                             ))}
                           </div>
                         </CardContent>
@@ -796,33 +780,29 @@ export default function AIVideoGeneratorPOC() {
           <TabsContent value="documentation" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Multi-Photo Video Generation Documentation</CardTitle>
-                <CardDescription>Technical implementation and benefits of using multiple source photos</CardDescription>
+                <CardTitle>Two-Step Process Documentation</CardTitle>
+                <CardDescription>Technical implementation and benefits of the frame-first approach</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
-                  <h3 className="font-semibold mb-3">Why Multiple Photos?</h3>
+                  <h3 className="font-semibold mb-3">Why Two Steps?</h3>
                   <Alert>
                     <AlertDescription>
                       <ul className="space-y-1 text-sm">
                         <li>
-                          • <strong>Visual Diversity:</strong> Different poses, expressions, and angles create more
-                          engaging videos
+                          • <strong>Quality Control:</strong> Review and approve frames before video generation
                         </li>
                         <li>
-                          • <strong>Natural Progression:</strong> Use different photos for different scenes to create
-                          realistic flow
+                          • <strong>Cost Efficiency:</strong> Avoid expensive video regeneration for frame issues
                         </li>
                         <li>
-                          • <strong>Better Representation:</strong> Multiple photos provide more complete character
-                          information
+                          • <strong>Flexibility:</strong> Modify individual frames without regenerating entire video
                         </li>
                         <li>
-                          • <strong>Reduced Repetition:</strong> Avoid monotonous single-pose videos
+                          • <strong>Consistency:</strong> Ensure character appearance is consistent across all frames
                         </li>
                         <li>
-                          • <strong>Enhanced Quality:</strong> More source material leads to better AI generation
-                          results
+                          • <strong>Debugging:</strong> Identify and fix issues at the frame level
                         </li>
                       </ul>
                     </AlertDescription>
@@ -830,24 +810,24 @@ export default function AIVideoGeneratorPOC() {
                 </div>
 
                 <div>
-                  <h3 className="font-semibold mb-3">Technical Implementation</h3>
+                  <h3 className="font-semibold mb-3">Technical Benefits</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <h4 className="font-medium">Photo Management</h4>
+                      <h4 className="font-medium">Step 1 Advantages</h4>
                       <div className="space-y-1 text-sm text-gray-600">
-                        <p>• Dynamic photo upload and removal</p>
-                        <p>• Preview thumbnails with metadata</p>
-                        <p>• Source tracking for each frame</p>
-                        <p>• Batch processing capabilities</p>
+                        <p>• Parallel frame generation</p>
+                        <p>• Individual frame optimization</p>
+                        <p>• Character consistency validation</p>
+                        <p>• Scene composition control</p>
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <h4 className="font-medium">Frame Generation</h4>
+                      <h4 className="font-medium">Step 2 Advantages</h4>
                       <div className="space-y-1 text-sm text-gray-600">
-                        <p>• Intelligent source photo selection</p>
-                        <p>• Character consistency validation</p>
-                        <p>• Multi-reference conditioning</p>
-                        <p>• Quality optimization per source</p>
+                        <p>• Optimized video compilation</p>
+                        <p>• Professional transitions</p>
+                        <p>• Efficient rendering pipeline</p>
+                        <p>• Quality-focused output</p>
                       </div>
                     </div>
                   </div>
@@ -857,20 +837,20 @@ export default function AIVideoGeneratorPOC() {
                   <h3 className="font-semibold mb-3">Performance Metrics</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">1-10</div>
-                      <div className="text-xs text-gray-600">Photos Supported</div>
-                    </div>
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">8</div>
+                      <div className="text-2xl font-bold text-blue-600">8</div>
                       <div className="text-xs text-gray-600">Frames Generated</div>
                     </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">12s</div>
+                      <div className="text-xs text-gray-600">Frame Generation</div>
+                    </div>
                     <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">98%</div>
-                      <div className="text-xs text-gray-600">Character Consistency</div>
+                      <div className="text-2xl font-bold text-purple-600">12s</div>
+                      <div className="text-xs text-gray-600">Video Compilation</div>
                     </div>
                     <div className="text-center p-3 bg-orange-50 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-600">3x</div>
-                      <div className="text-xs text-gray-600">Visual Variety</div>
+                      <div className="text-2xl font-bold text-orange-600">95%</div>
+                      <div className="text-xs text-gray-600">Frame Consistency</div>
                     </div>
                   </div>
                 </div>
