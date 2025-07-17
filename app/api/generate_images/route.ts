@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
         const imageUrls: string[] = [];
         const errors: string[] = [];
-        let currentReferenceImage = image; // Start with the original uploaded image
+        // let currentReferenceImage = image; // Start with the original uploaded image
 
         // Generate images sequentially, each based on the previous one
         for (let i = 0; i < imageCount; i++) {
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
                     console.log(`Generated image ${i + 1}: ${imagePath}`);
                     
                     // Update reference image for next iteration (use the just-generated image)
-                    currentReferenceImage = response.data[0].b64_json;
+                    // currentReferenceImage = response.data[0].b64_json;
                 } else {
                     errors.push(`Failed to generate image ${i + 1}: No image data received`);
                 }
