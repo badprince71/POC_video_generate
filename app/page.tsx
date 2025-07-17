@@ -181,7 +181,7 @@ export default function AIVideoGeneratorPOC() {
     setCurrentStep("video-ready")
   }
 
-  const getFrameDescription = (frameIndex: number, userPrompt: string): string => {
+  const getFrameDescription = (frameIndex: number): string => {
     const descriptions = [
       "Character introduction with user's appearance",
       "Scene setup based on prompt context",
