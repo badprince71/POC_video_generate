@@ -55,6 +55,8 @@ export default function AIVideoGeneratorPOC() {
   const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
   const [isGenerationStopped, setIsGenerationStopped] = useState(false)
+  const [generatedStory, setGeneratedStory] = useState<any>(null)
+  const [isGeneratingStory, setIsGeneratingStory] = useState(false)
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -68,72 +70,134 @@ export default function AIVideoGeneratorPOC() {
     }
   }
 
+  const generateStory = async () => {
+    if (!prompt) return
+
+    setIsGeneratingStory(true)
+    try {
+      const response = await fetch("/api/generate_story", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt }),
+      })
+      .then((res) => res.json())
+      .catch((error) => {
+        console.error("Error generating story:", error)
+        return { error: "Failed to generate story" }
+      })
+
+      if (response.error) {
+        console.error("Story API Error:", response.error)
+        alert(`Error: ${response.error}`)
+        return
+      }
+
+      setGeneratedStory(response)
+      console.log("Generated story:", response)
+    } catch (error) {
+      console.error("Error generating story:", error)
+      alert("Failed to generate story")
+    } finally {
+      setIsGeneratingStory(false)
+    }
+  }
+
   const generateFrames = async () => {
     if (!selectedImage || !prompt) return
+
+    // First generate the story if not already generated
+    if (!generatedStory) {
+      await generateStory()
+    }
 
     setCurrentStep("generating-frames")
     setFrameGenerationProgress(0)
     setIsGenerationStopped(false)
+    setGeneratedFrames([]) // Clear previous frames
 
-    // Simulate frame generation process
     const frameCount = 5
     const newFrames: VideoFrame[] = []
 
-    const response = await fetch("/api/generate_images", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ 
-        image: imagePreview.replace(/^data:image\/\w+;base64,/, ""), 
-        prompt: prompt, 
-        numImages: frameCount 
-      }),
-    })
-    .then((res) => res.json())
-    .catch((error) => {
-      console.error("Error generating images:", error)
-      return { error: "Failed to generate images" }
-    })
-
-    if (response.error) {
-      console.error("API Error:", response.error)
-      alert(`Error: ${response.error}`)
-      setCurrentStep("input")
-      return
-    }
-
-    const imageUrls = response.imageUrls || []
-    
-    console.log(`Generated ${response.generatedCount}/${response.requestedCount} images successfully`)
-
-    console.log("imageUrls", imageUrls)
-    
+    // Generate images one by one and show progress in real-time
     for (let i = 0; i < frameCount; i++) {
       // Check if generation was stopped
       if (isGenerationStopped) {
         setCurrentStep("input")
         return
       }
-      // Simulate processing time for each frame
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-      
-      // Check again after the delay
-      if (isGenerationStopped) {
-        setCurrentStep("input")
-        return
-      }
+      try {
+        console.log(`Generating frame ${i + 1}/${frameCount}`)
+        // Determine the input image for this frame
+        let inputImage: string;
+        if (i === 0) {
+          // First frame: use original uploaded image
+          inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "");
+        } else {
+          // Subsequent frames: use the previous generated image
+          const previousFrame = newFrames[i - 1];
+          inputImage = previousFrame.imageUrl.replace(/^data:image\/\w+;base64,/, "");
+        }
 
-      const frame: VideoFrame = {
-        id: i + 1,
-        timestamp: `0:${(i * 3).toString().padStart(2, "0")}`,
-        imageUrl: i === 0 ? imagePreview : imageUrls[i],
-        description: getFrameDescription(i),
-        prompt: `Frame ${i + 1}: ${getFrameDescription(i)}`,
+        // Use story-generated prompt if available, otherwise use original prompt
+        const framePrompt = generatedStory && generatedStory.framePrompts 
+          ? generatedStory.framePrompts[i]?.prompt || prompt
+          : prompt;
+
+        // Call API to generate single image
+        const response = await fetch("/api/generate_single_image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ 
+            image: inputImage, 
+            prompt: framePrompt, 
+            frameIndex: i,
+            totalFrames: frameCount,
+            isFirstFrame: i === 0
+          }),
+        })
+        .then((res) => res.json())
+        .catch((error) => {
+          console.error("Error generating image:", error)
+          return { error: "Failed to generate image" }
+        })
+
+        if (response.error) {
+          console.error("API Error:", response.error)
+          alert(`Error generating frame ${i + 1}: ${response.error}`)
+          continue // Skip this frame but continue with others
+        }
+
+        // Check if generation was stopped after API call
+        if (isGenerationStopped) {
+          setCurrentStep("input")
+          return
+        }
+
+
+        // Create frame object with generated image
+        const frame: VideoFrame = {
+          id: i + 1,
+          timestamp: `0:${(i * 3).toString().padStart(2, "0")}`,
+          imageUrl: response.imageUrl || "/placeholder.svg",
+          description: getFrameDescription(i, prompt),
+          prompt: `Frame ${i + 1}: ${getFrameDescription(i, prompt)}`,
+        }
+
+        newFrames.push(frame)
+        setGeneratedFrames([...newFrames]) // Immediately show the new frame
+        setFrameGenerationProgress(((i + 1) / frameCount) * 100)
+        
+        console.log(`Frame ${i + 1} generated successfully`)
+        console.log(`Image data length: ${response.imageUrl?.length || 0} characters`)
+
+      } catch (error) {
+        console.error(`Error generating frame ${i + 1}:`, error)
+        // Continue with next frame
       }
-      newFrames.push(frame)
-      setGeneratedFrames([...newFrames])
-      setFrameGenerationProgress(((i + 1) / frameCount) * 100)
     }
 
     if (!isGenerationStopped) {
@@ -162,12 +226,10 @@ export default function AIVideoGeneratorPOC() {
       "Rendering video...",
       "Finalizing output...",
     ]
-
     for (let i = 0; i < steps.length; i++) {
       await new Promise((resolve) => setTimeout(resolve, 2000))
       setVideoGenerationProgress(((i + 1) / steps.length) * 100)
     }
-    console.log("generatedFrames", generatedFrames)
     const video: GeneratedVideo = {
       id: "generated-" + Date.now(),
       title: "Your Generated Video",
@@ -181,7 +243,7 @@ export default function AIVideoGeneratorPOC() {
     setCurrentStep("video-ready")
   }
 
-  const getFrameDescription = (frameIndex: number): string => {
+  const getFrameDescription = (frameIndex: number, userPrompt: string): string => {
     const descriptions = [
       "Character introduction with user's appearance",
       "Scene setup based on prompt context",
@@ -192,9 +254,9 @@ export default function AIVideoGeneratorPOC() {
       "Conclusion setup",
       "Final message or call-to-action",
     ]
+    
     return descriptions[frameIndex] || `Frame ${frameIndex + 1} content`
   }
-
   const resetGeneration = () => {
     setCurrentStep("input")
     setGeneratedFrames([])
@@ -203,6 +265,8 @@ export default function AIVideoGeneratorPOC() {
     setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
     setIsGenerationStopped(false)
+    setGeneratedStory(null)
+    setIsGeneratingStory(false)
   }
 
   const regenerateFrames = () => {
@@ -214,7 +278,7 @@ export default function AIVideoGeneratorPOC() {
     setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
     setIsGenerationStopped(false)
-    // Keep the existing prompt and image so user can modify them
+    // Keep the existing prompt, image, and story so user can modify them
   }
 
   const FrameViewer = ({ frames }: { frames: VideoFrame[] }) => {
@@ -249,13 +313,18 @@ export default function AIVideoGeneratorPOC() {
             </Button>
           </div>
         </div>
-
         {/* Selected Frame Display */}
-        <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
+        <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px]">
           <img
             src={frames[selectedFrameIndex]?.imageUrl || "/placeholder.svg"}
             alt={`Frame ${selectedFrameIndex + 1}`}
-            className="w-full h-full object-cover"
+            className="max-w-full max-h-full object-contain"
+            onLoad={() => console.log(`Frame ${selectedFrameIndex + 1} loaded successfully`)}
+            onError={(e) => {
+              console.error(`Error loading frame ${selectedFrameIndex + 1}:`, e)
+              // Fallback to placeholder if image fails to load
+              e.currentTarget.src = "/placeholder.svg"
+            }}
           />
         </div>
 
@@ -276,7 +345,7 @@ export default function AIVideoGeneratorPOC() {
               <button
                 key={frame.id}
                 onClick={() => setSelectedFrameIndex(index)}
-                className={`aspect-video rounded border-2 overflow-hidden transition-all relative ${
+                className={`aspect-square rounded border-2 overflow-hidden transition-all relative bg-gray-100 flex items-center justify-center ${
                   selectedFrameIndex === index
                     ? "border-blue-500 ring-2 ring-blue-200"
                     : "border-gray-200 hover:border-gray-300"
@@ -285,7 +354,7 @@ export default function AIVideoGeneratorPOC() {
                 <img
                   src={frame.imageUrl || "/placeholder.svg"}
                   alt={`Frame ${index + 1}`}
-                  className="w-full h-full object-cover"
+                  className="max-w-full max-h-full object-contain"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
                   {frame.timestamp}
@@ -343,7 +412,6 @@ export default function AIVideoGeneratorPOC() {
             <TabsTrigger value="tools">AI Tools</TabsTrigger>
             <TabsTrigger value="documentation">Documentation</TabsTrigger>
           </TabsList>
-
           <TabsContent value="generator" className="space-y-6">
             {/* Step 1: Input and Frame Generation */}
             {(currentStep === "input" || currentStep === "generating-frames") && (
@@ -390,11 +458,60 @@ export default function AIVideoGeneratorPOC() {
                         id="prompt"
                         placeholder="Describe your video... e.g., 'Create a birthday invitation video where I'm celebrating with confetti and balloons in a party setting'"
                         value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
+                        onChange={(e) => {
+                          setPrompt(e.target.value)
+                          setGeneratedStory(null) // Clear story when prompt changes
+                        }}
                         className="mt-1 min-h-[100px]"
                         disabled={currentStep === "generating-frames"}
                       />
                       
+                      {/* Story Generator Button */}
+                      <div className="mt-2 flex gap-2">
+                        <Button
+                          onClick={generateStory}
+                          disabled={!prompt || isGeneratingStory || currentStep === "generating-frames"}
+                          variant="outline"
+                          size="sm"
+                        >
+                          {isGeneratingStory ? (
+                            <>
+                              <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                              Generating Story...
+                            </>
+                          ) : (
+                            <>
+                              <Wand2 className="h-4 w-4 mr-2" />
+                              Generate Rich Story
+                            </>
+                          )}
+                        </Button>
+                        {generatedStory && (
+                          <Badge variant="secondary" className="self-center">
+                            Story Ready: {generatedStory.story?.title}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Story Preview */}
+                      {generatedStory && (
+                        <div className="mt-4 p-4 bg-blue-50 rounded-lg border">
+                          <h4 className="font-semibold text-blue-900 mb-2">
+                            📖 {generatedStory.story.title}
+                          </h4>
+                          <p className="text-sm text-blue-800 mb-3">
+                            {generatedStory.story.overallStory}
+                          </p>
+                          <div className="space-y-2">
+                            <h5 className="text-sm font-medium text-blue-900">Scene Breakdown:</h5>
+                            {generatedStory.story.scenes.map((scene: any, index: number) => (
+                              <div key={index} className="text-xs text-blue-700 bg-white p-2 rounded">
+                                <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex gap-2">
@@ -455,12 +572,23 @@ export default function AIVideoGeneratorPOC() {
                             <h4 className="text-sm font-medium">Generated Frames:</h4>
                             <div className="grid grid-cols-4 gap-2">
                               {generatedFrames.map((frame, index) => (
-                                <div key={frame.id} className="aspect-video bg-gray-100 rounded border overflow-hidden">
+                                <div key={frame.id} className="aspect-square bg-gray-100 rounded border overflow-hidden relative flex items-center justify-center">
                                   <img
                                     src={frame.imageUrl || "/placeholder.svg"}
                                     alt={`Frame ${index + 1}`}
-                                    className="w-full h-full object-cover"
+                                    className="max-w-full max-h-full object-contain"
+                                    onLoad={() => console.log(`Thumbnail ${index + 1} loaded`)}
+                                    onError={(e) => {
+                                      console.error(`Error loading thumbnail ${index + 1}`)
+                                      e.currentTarget.src = "/placeholder.svg"
+                                    }}
                                   />
+                                  {/* Loading indicator overlay */}
+                                  {!frame.imageUrl.startsWith('data:image') && (
+                                    <div className="absolute inset-0 bg-gray-200 flex items-center justify-center">
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
