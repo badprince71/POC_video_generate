@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
             messages: [
                 {
                     role: "system",
-                    content: `You are a creative storyteller and video director. Your task is to transform a simple user prompt into a rich, engaging 30-second video story with 5 distinct scenes (6 seconds each).
+                    content: `You are a creative storyteller and video director. Your task is to transform a simple user prompt into a rich, engaging 30-second video story with 6 distinct scenes (5 seconds each).
 
 For each scene, provide:
 1. A detailed description of what happens
@@ -42,8 +42,8 @@ Format your response as JSON with this structure:
   "overallStory": "Brief story summary",
   "scenes": [
     {
-      "sceneNumber": 1,
-      "timeframe": "0-6 seconds",
+             "sceneNumber": 1,
+       "timeframe": "0-5 seconds",
       "description": "Detailed scene description",
       "characterAction": "What the person is doing",
       "environment": "Background and setting details",
@@ -55,7 +55,7 @@ Format your response as JSON with this structure:
                 },
                 {
                     role: "user",
-                    content: `Create a rich, engaging photo story from this prompt: "${prompt}". Break it down into 5 realistic photographic scenes. Make it authentic, visually interesting, and full of genuine human moments. The main character should show natural expressions and the story should have a clear beginning, middle, and end. Each scene should be like a professional photograph capturing a real moment in time, not animation frames.`
+                    content: `Create a rich, engaging photo story from this prompt: "${prompt}". Break it down into 6 realistic photographic scenes (5 seconds each for a 30-second total). Make it authentic, visually interesting, and full of genuine human moments. The main character should show natural expressions and the story should have a clear beginning, middle, and end. Each scene should be like a professional photograph capturing a real moment in time, not animation frames.`
                 }
             ],
             max_tokens: 2000,
@@ -76,7 +76,7 @@ Format your response as JSON with this structure:
         }
 
         // Generate frame-specific prompts for image generation
-        const framePrompts = storyData.scenes.map((scene: any, index: number) => {
+        const framePrompts = storyData.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string; characterAction: string; environment: string; mood: string; props: string }, index: number) => {
             return {
                 frameNumber: index + 1,
                 timeframe: scene.timeframe,
@@ -90,7 +90,7 @@ Format your response as JSON with this structure:
             success: true,
             story: storyData,
             framePrompts: framePrompts,
-            totalFrames: 5,
+            totalFrames: 6,
             videoDuration: "30 seconds"
         });
 

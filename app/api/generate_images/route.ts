@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
                 // Generate single image using GPT-4o Vision (gpt-image-1)
                 // Retry logic for OpenAI safety system rejections
                 let response;
-                let retries = 2;
+                const retries = 2;
                 let lastError;
                 for (let attempt = 0; attempt <= retries; attempt++) {
                     try {
@@ -113,12 +113,13 @@ export async function POST(request: NextRequest) {
                          });
                         // If successful, break out of the loop
                         break;
-                    } catch (err: any) {
+                    } catch (err: unknown) {
                         lastError = err;
                         // Check for OpenAI safety system error (400 with specific message)
                         if (
-                            err?.status === 400 &&
-                            typeof err?.message === "string" &&
+                            err && typeof err === 'object' &&
+                            'status' in err && err.status === 400 &&
+                            'message' in err && typeof err.message === "string" &&
                             err.message.includes("Your request was rejected as a result of our safety system")
                         ) {
                             console.warn(`OpenAI safety system rejection on attempt ${attempt + 1}: ${err.message}`);
