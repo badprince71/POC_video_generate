@@ -125,7 +125,17 @@ The story should have a complete narrative arc with setup, development, climax, 
         }
 
         // Generate frame-specific prompts for image generation
-        const framePrompts = storyData.scenes.map((scene: any, index: number) => {
+        const framePrompts = storyData.scenes.map((scene: {
+            description?: string;
+            characterAction?: string;
+            environment?: string;
+            mood?: string;
+            props?: string;
+            storyContext?: string;
+            visualDetails?: string;
+            originalPromptConnection?: string;
+            timeframe?: string;
+        }, index: number) => {
             // Create a comprehensive prompt using all available scene details
             const basePrompt = scene.description || '';
             const characterDetails = scene.characterAction || '';
