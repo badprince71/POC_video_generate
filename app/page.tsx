@@ -181,7 +181,7 @@ export default function AIVideoGeneratorPOC() {
         // Create frame object with generated image
         const frame: VideoFrame = {
           id: i + 1,
-          timestamp: `0:${(i * 3).toString().padStart(2, "0")}`,
+          timestamp: `0:${(i * 5).toString().padStart(2, "0")}`,
           imageUrl: response.imageUrl || "/placeholder.svg",
           description: getFrameDescription(i),
           prompt: `Frame ${i + 1}: ${getFrameDescription(i)}`,
@@ -267,7 +267,7 @@ export default function AIVideoGeneratorPOC() {
     const video: GeneratedVideo = {
       id: "generated-" + Date.now(),
       title: "Your Generated Video",
-      duration: `${generatedFrames.length * 3}s`,
+      duration: `${generatedFrames.length * 5}s`,
       prompt: prompt,
       frames: generatedFrames,
       videoUrl: "/placeholder-video.mp4",
@@ -611,7 +611,7 @@ export default function AIVideoGeneratorPOC() {
                           </div>
                           <Progress value={frameGenerationProgress} className="w-full" />
                           <p className="text-sm text-gray-600 mt-2">
-                            Generating frames concurrently... {Object.keys(frameProgress).length} of 6 completed ({Math.round((Object.keys(frameProgress).length / 6) * 100)}%)
+                            Generating frames concurrently... {Object.keys(frameProgress).length} of 6 completed
                           </p>
                           
                           {/* Skeleton loading animation for progress */}
