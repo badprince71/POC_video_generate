@@ -1,11 +1,12 @@
 "use client"
 
 import type React from "react"
+import Image from "next/image"
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
@@ -190,11 +191,13 @@ export default function AIVideoGeneratorPOC() {
         console.log(`Image data length: ${response.imageUrl?.length || 0} characters`)
 
         // Update progress for this frame
-        setFrameProgress(prev => ({ ...prev, [i]: true }))
-        
-        // Calculate overall progress
-        const completedFrames = Object.keys({ ...frameProgress, [i]: true }).length
-        setFrameGenerationProgress((completedFrames / frameCount) * 100)
+        setFrameProgress(prev => {
+          const newProgress = { ...prev, [i]: true }
+          // Calculate overall progress based on completed frames
+          const completedFrames = Object.keys(newProgress).length
+          setFrameGenerationProgress((completedFrames / frameCount) * 100)
+          return newProgress
+        })
 
         return { frame, index: i }
       })
@@ -346,15 +349,15 @@ export default function AIVideoGeneratorPOC() {
         </div>
         {/* Selected Frame Display */}
         <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px]">
-          <img
+          <Image
             src={frames[selectedFrameIndex]?.imageUrl || "/placeholder.svg"}
             alt={`Frame ${selectedFrameIndex + 1}`}
+            width={400}
+            height={400}
             className="max-w-full max-h-full object-contain"
             onLoad={() => console.log(`Frame ${selectedFrameIndex + 1} loaded successfully`)}
-            onError={(e) => {
-              console.error(`Error loading frame ${selectedFrameIndex + 1}:`, e)
-              // Fallback to placeholder if image fails to load
-              e.currentTarget.src = "/placeholder.svg"
+            onError={() => {
+              console.error(`Error loading frame ${selectedFrameIndex + 1}`)
             }}
           />
         </div>
@@ -382,9 +385,11 @@ export default function AIVideoGeneratorPOC() {
                     : "border-gray-200 hover:border-gray-300"
                 }`}
               >
-                <img
+                <Image
                   src={frame.imageUrl || "/placeholder.svg"}
                   alt={`Frame ${index + 1}`}
+                  width={100}
+                  height={100}
                   className="max-w-full max-h-full object-contain"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
@@ -484,9 +489,11 @@ export default function AIVideoGeneratorPOC() {
                         </div>
                         {imagePreview && (
                           <div className="mt-3">
-                            <img
+                            <Image
                               src={imagePreview || "/placeholder.svg"}
                               alt="Preview"
+                              width={128}
+                              height={128}
                               className="w-32 h-32 object-cover rounded-lg border shadow-sm"
                             />
                           </div>
@@ -532,9 +539,10 @@ export default function AIVideoGeneratorPOC() {
                             Story Ready: {generatedStory.story?.title}
                           </Badge>
                         )}
+
                       </div>
                       {/* Story Preview */}
-                      {generatedStory && (
+                      {generatedStory && !isGeneratingStory && (
                         <div className="mt-4 p-4 bg-blue-50 rounded-lg border">
                           <h4 className="font-semibold text-blue-900 mb-2">
                             📖 {generatedStory.story.title}
@@ -603,8 +611,20 @@ export default function AIVideoGeneratorPOC() {
                           </div>
                           <Progress value={frameGenerationProgress} className="w-full" />
                           <p className="text-sm text-gray-600 mt-2">
-                            Generating frames concurrently... {Object.keys(frameProgress).length} of 6 completed
+                            Generating frames concurrently... {Object.keys(frameProgress).length} of 6 completed ({Math.round((Object.keys(frameProgress).length / 6) * 100)}%)
                           </p>
+                          
+                          {/* Skeleton loading animation for progress */}
+                          {frameGenerationProgress < 100 && (
+                            <div className="mt-4 space-y-2">
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-500">Processing frames...</p>
+                            </div>
+                          )}
                         </div>
 
                         {/* Individual Frame Progress */}
@@ -613,41 +633,41 @@ export default function AIVideoGeneratorPOC() {
                           <div className="grid grid-cols-6 gap-2">
                             {Array.from({ length: 6 }, (_, i) => (
                               <div key={i} className="text-center">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                                  frameProgress[i] 
-                                    ? 'bg-green-100 text-green-600' 
-                                    : 'bg-gray-100 text-gray-400'
-                                }`}>
-                                  {frameProgress[i] ? '✓' : i + 1}
-                                </div>
+                                {frameProgress[i] ? (
+                                  // Completed frame
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-green-100 text-green-600">
+                                    ✓
+                                  </div>
+                                ) : (
+                                  // Loading skeleton for incomplete frames
+                                  <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex items-center justify-center">
+                                    <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
+                                  </div>
+                                )}
                                 <p className="text-xs text-gray-500 mt-1">Frame {i + 1}</p>
                               </div>
                             ))}
                           </div>
                         </div>
 
+                        {/* Generated Frames - Only show completed frames */}
                         {generatedFrames.length > 0 && (
                           <div className="space-y-2">
-                            <h4 className="text-sm font-medium">Generated Frames:</h4>
+                            <h4 className="text-sm font-medium">Generated Frames ({generatedFrames.length} of 6):</h4>
                             <div className="grid grid-cols-4 gap-2">
                               {generatedFrames.map((frame, index) => (
                                 <div key={frame.id} className="aspect-square bg-gray-100 rounded border overflow-hidden relative flex items-center justify-center">
-                                  <img
-                                    src={frame.imageUrl || "/placeholder.svg"}
-                                    alt={`Frame ${index + 1}`}
-                                    className="max-w-full max-h-full object-contain"
-                                    onLoad={() => console.log(`Thumbnail ${index + 1} loaded`)}
-                                    onError={(e) => {
-                                      console.error(`Error loading thumbnail ${index + 1}`)
-                                      e.currentTarget.src = "/placeholder.svg"
-                                    }}
-                                  />
-                                  {/* Loading indicator overlay */}
-                                  {!frame.imageUrl.startsWith('data:image') && (
-                                    <div className="absolute inset-0 bg-gray-200 flex items-center justify-center">
-                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                                    </div>
-                                  )}
+                                                                  <Image
+                                  src={frame.imageUrl || "/placeholder.svg"}
+                                  alt={`Frame ${index + 1}`}
+                                  width={100}
+                                  height={100}
+                                  className="max-w-full max-h-full object-contain"
+                                  onLoad={() => console.log(`Thumbnail ${index + 1} loaded`)}
+                                  onError={() => {
+                                    console.error(`Error loading thumbnail ${index + 1}`)
+                                  }}
+                                />
                                 </div>
                               ))}
                             </div>
