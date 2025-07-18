@@ -55,7 +55,22 @@ export default function AIVideoGeneratorPOC() {
   const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
   const [isGenerationStopped, setIsGenerationStopped] = useState(false)
-  const [generatedStory, setGeneratedStory] = useState<any>(null)
+  const [generatedStory, setGeneratedStory] = useState<{
+    story: {
+      title: string;
+      overallStory: string;
+      scenes: Array<{
+        sceneNumber: number;
+        timeframe: string;
+        description: string;
+      }>;
+    };
+    framePrompts: Array<{
+      frameNumber: number;
+      timeframe: string;
+      prompt: string;
+    }>;
+  } | null>(null)
   const [isGeneratingStory, setIsGeneratingStory] = useState(false)
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -117,7 +132,7 @@ export default function AIVideoGeneratorPOC() {
     setIsGenerationStopped(false)
     setGeneratedFrames([]) // Clear previous frames
 
-    const frameCount = 5
+    const frameCount = 6
     const newFrames: VideoFrame[] = []
 
     // Generate images one by one and show progress in real-time
@@ -129,16 +144,8 @@ export default function AIVideoGeneratorPOC() {
       }
       try {
         console.log(`Generating frame ${i + 1}/${frameCount}`)
-        // Determine the input image for this frame
-        let inputImage: string;
-        if (i === 0) {
-          // First frame: use original uploaded image
-          inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "");
-        } else {
-          // Subsequent frames: use the previous generated image
-          const previousFrame = newFrames[i - 1];
-          inputImage = previousFrame.imageUrl.replace(/^data:image\/\w+;base64,/, "");
-        }
+        // Use original uploaded image for all frames
+        const inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "");
 
         // Use story-generated prompt if available, otherwise use original prompt
         const framePrompt = generatedStory && generatedStory.framePrompts 
@@ -183,8 +190,8 @@ export default function AIVideoGeneratorPOC() {
           id: i + 1,
           timestamp: `0:${(i * 3).toString().padStart(2, "0")}`,
           imageUrl: response.imageUrl || "/placeholder.svg",
-          description: getFrameDescription(i, prompt),
-          prompt: `Frame ${i + 1}: ${getFrameDescription(i, prompt)}`,
+          description: getFrameDescription(i),
+          prompt: `Frame ${i + 1}: ${getFrameDescription(i)}`,
         }
 
         newFrames.push(frame)
@@ -243,7 +250,7 @@ export default function AIVideoGeneratorPOC() {
     setCurrentStep("video-ready")
   }
 
-  const getFrameDescription = (frameIndex: number, userPrompt: string): string => {
+  const getFrameDescription = (frameIndex: number): string => {
     const descriptions = [
       "Character introduction with user's appearance",
       "Scene setup based on prompt context",
@@ -251,8 +258,6 @@ export default function AIVideoGeneratorPOC() {
       "Character interaction and movement",
       "Climax or key moment",
       "Action resolution",
-      "Conclusion setup",
-      "Final message or call-to-action",
     ]
     
     return descriptions[frameIndex] || `Frame ${frameIndex + 1} content`
@@ -504,7 +509,7 @@ export default function AIVideoGeneratorPOC() {
                           </p>
                           <div className="space-y-2">
                             <h5 className="text-sm font-medium text-blue-900">Scene Breakdown:</h5>
-                            {generatedStory.story.scenes.map((scene: any, index: number) => (
+                            {generatedStory.story.scenes.map((scene, index: number) => (
                               <div key={index} className="text-xs text-blue-700 bg-white p-2 rounded">
                                 <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
                               </div>
@@ -563,7 +568,7 @@ export default function AIVideoGeneratorPOC() {
                           </div>
                           <Progress value={frameGenerationProgress} className="w-full" />
                           <p className="text-sm text-gray-600 mt-2">
-                            Generating frame {Math.ceil((frameGenerationProgress / 100) * 5)} of 5
+                            Generating frame {Math.ceil((frameGenerationProgress / 100) * 6)} of 6
                           </p>
                         </div>
 
