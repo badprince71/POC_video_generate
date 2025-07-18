@@ -55,6 +55,7 @@ export default function AIVideoGeneratorPOC() {
   const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
   const [isGenerationStopped, setIsGenerationStopped] = useState(false)
+  const [frameProgress, setFrameProgress] = useState<{ [key: number]: boolean }>({})
   const [generatedStory, setGeneratedStory] = useState<{
     story: {
       title: string;
@@ -131,22 +132,21 @@ export default function AIVideoGeneratorPOC() {
     setFrameGenerationProgress(0)
     setIsGenerationStopped(false)
     setGeneratedFrames([]) // Clear previous frames
+    setFrameProgress({}) // Reset frame progress tracking
 
     const frameCount = 6
-    const newFrames: VideoFrame[] = []
+    const inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "");
 
-    // Generate images one by one and show progress in real-time
-    for (let i = 0; i < frameCount; i++) {
-      // Check if generation was stopped
-      if (isGenerationStopped) {
-        setCurrentStep("input")
-        return
-      }
-      try {
-        console.log(`Generating frame ${i + 1}/${frameCount}`)
-        // Use original uploaded image for all frames
-        const inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "");
+    try {
+      // Create array of promises for concurrent generation
+      const generationPromises = Array.from({ length: frameCount }, async (_, i) => {
+        // Check if generation was stopped
+        if (isGenerationStopped) {
+          throw new Error("Generation stopped")
+        }
 
+        console.log(`Starting generation for frame ${i + 1}/${frameCount}`)
+        
         // Use story-generated prompt if available, otherwise use original prompt
         const framePrompt = generatedStory && generatedStory.framePrompts 
           ? generatedStory.framePrompts[i]?.prompt || prompt
@@ -168,22 +168,14 @@ export default function AIVideoGeneratorPOC() {
         })
         .then((res) => res.json())
         .catch((error) => {
-          console.error("Error generating image:", error)
+          console.error(`Error generating frame ${i + 1}:`, error)
           return { error: "Failed to generate image" }
         })
 
         if (response.error) {
-          console.error("API Error:", response.error)
-          alert(`Error generating frame ${i + 1}: ${response.error}`)
-          continue // Skip this frame but continue with others
+          console.error(`API Error for frame ${i + 1}:`, response.error)
+          throw new Error(`Frame ${i + 1}: ${response.error}`)
         }
-
-        // Check if generation was stopped after API call
-        if (isGenerationStopped) {
-          setCurrentStep("input")
-          return
-        }
-
 
         // Create frame object with generated image
         const frame: VideoFrame = {
@@ -194,21 +186,53 @@ export default function AIVideoGeneratorPOC() {
           prompt: `Frame ${i + 1}: ${getFrameDescription(i)}`,
         }
 
-        newFrames.push(frame)
-        setGeneratedFrames([...newFrames]) // Immediately show the new frame
-        setFrameGenerationProgress(((i + 1) / frameCount) * 100)
-        
         console.log(`Frame ${i + 1} generated successfully`)
         console.log(`Image data length: ${response.imageUrl?.length || 0} characters`)
 
-      } catch (error) {
-        console.error(`Error generating frame ${i + 1}:`, error)
-        // Continue with next frame
-      }
-    }
+        // Update progress for this frame
+        setFrameProgress(prev => ({ ...prev, [i]: true }))
+        
+        // Calculate overall progress
+        const completedFrames = Object.keys({ ...frameProgress, [i]: true }).length
+        setFrameGenerationProgress((completedFrames / frameCount) * 100)
 
-    if (!isGenerationStopped) {
-      setCurrentStep("frames-ready")
+        return { frame, index: i }
+      })
+
+      // Generate all frames concurrently
+      console.log("Starting concurrent frame generation...")
+      const results = await Promise.all(generationPromises)
+
+      // Check if generation was stopped during the process
+      if (isGenerationStopped) {
+        setCurrentStep("input")
+        return
+      }
+
+      // Sort results by index to maintain correct sequence
+      const sortedResults = results.sort((a, b) => a.index - b.index)
+      
+      // Create frames array in correct order
+      const newFrames = sortedResults.map(result => result.frame)
+      
+      // Update state with all frames at once
+      setGeneratedFrames(newFrames)
+      setFrameGenerationProgress(100)
+      
+      console.log(`All ${frameCount} frames generated successfully!`)
+      
+      if (!isGenerationStopped) {
+        setCurrentStep("frames-ready")
+      }
+
+    } catch (error) {
+      console.error("Error during concurrent frame generation:", error)
+      
+      // If generation was stopped, don't show error
+      if (!isGenerationStopped) {
+        alert(`Error generating frames: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        setCurrentStep("input")
+      }
     }
   }
 
@@ -272,6 +296,7 @@ export default function AIVideoGeneratorPOC() {
     setIsGenerationStopped(false)
     setGeneratedStory(null)
     setIsGeneratingStory(false)
+    setFrameProgress({})
   }
 
   const regenerateFrames = () => {
@@ -283,6 +308,7 @@ export default function AIVideoGeneratorPOC() {
     setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
     setIsGenerationStopped(false)
+    setFrameProgress({})
     // Keep the existing prompt, image, and story so user can modify them
   }
 
@@ -439,23 +465,33 @@ export default function AIVideoGeneratorPOC() {
                     )}
                     <div>
                       <Label htmlFor="image-upload">Upload Your Photo</Label>
-                      <Input
-                        id="image-upload"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="mt-1"
-                        disabled={currentStep === "generating-frames"}
-                      />
-                      {imagePreview && (
-                        <div className="mt-2">
-                          <img
-                            src={imagePreview || "/placeholder.svg"}
-                            alt="Preview"
-                            className="w-32 h-32 object-cover rounded-lg border"
+                      <div className="mt-1">
+                        <div className="relative">
+                          <input
+                            id="image-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageUpload}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            disabled={currentStep === "generating-frames"}
                           />
+                          <div className="flex items-center justify-center w-full h-12 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors duration-200 cursor-pointer">
+                            <Upload className="h-5 w-5 mr-2 text-gray-500" />
+                            <span className="text-sm font-medium text-gray-700">
+                              {selectedImage ? selectedImage.name : "Choose a photo or drag and drop"}
+                            </span>
+                          </div>
                         </div>
-                      )}
+                        {imagePreview && (
+                          <div className="mt-3">
+                            <img
+                              src={imagePreview || "/placeholder.svg"}
+                              alt="Preview"
+                              className="w-32 h-32 object-cover rounded-lg border shadow-sm"
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <Label htmlFor="prompt">Video Description</Label>
@@ -497,7 +533,6 @@ export default function AIVideoGeneratorPOC() {
                           </Badge>
                         )}
                       </div>
-
                       {/* Story Preview */}
                       {generatedStory && (
                         <div className="mt-4 p-4 bg-blue-50 rounded-lg border">
@@ -568,8 +603,27 @@ export default function AIVideoGeneratorPOC() {
                           </div>
                           <Progress value={frameGenerationProgress} className="w-full" />
                           <p className="text-sm text-gray-600 mt-2">
-                            Generating frame {Math.ceil((frameGenerationProgress / 100) * 6)} of 6
+                            Generating frames concurrently... {Object.keys(frameProgress).length} of 6 completed
                           </p>
+                        </div>
+
+                        {/* Individual Frame Progress */}
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium">Frame Progress:</h4>
+                          <div className="grid grid-cols-6 gap-2">
+                            {Array.from({ length: 6 }, (_, i) => (
+                              <div key={i} className="text-center">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                                  frameProgress[i] 
+                                    ? 'bg-green-100 text-green-600' 
+                                    : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {frameProgress[i] ? '✓' : i + 1}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">Frame {i + 1}</p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
 
                         {generatedFrames.length > 0 && (
