@@ -58,7 +58,17 @@ export default function AIVideoGeneratorPOC() {
   const [isGenerationStopped, setIsGenerationStopped] = useState(false)
   const [frameProgress, setFrameProgress] = useState<{ [key: number]: boolean }>({})
   const [generatedStory, setGeneratedStory] = useState<{
-    story: {
+    originalPrompt: string;
+    firstStory: {
+      title: string;
+      overallStory: string;
+      scenes: Array<{
+        sceneNumber: number;
+        timeframe: string;
+        description: string;
+      }>;
+    };
+    enhancedStory: {
       title: string;
       overallStory: string;
       scenes: Array<{
@@ -183,8 +193,10 @@ export default function AIVideoGeneratorPOC() {
           id: i + 1,
           timestamp: `0:${(i * 5).toString().padStart(2, "0")}`,
           imageUrl: response.imageUrl || "/placeholder.svg",
-          description: getFrameDescription(i),
-          prompt: `Frame ${i + 1}: ${getFrameDescription(i)}`,
+          description: generatedStory && generatedStory.enhancedStory.scenes[i] 
+            ? generatedStory.enhancedStory.scenes[i].description 
+            : getFrameDescription(i),
+          prompt: framePrompt,
         }
 
         console.log(`Frame ${i + 1} generated successfully`)
@@ -238,8 +250,6 @@ export default function AIVideoGeneratorPOC() {
       }
     }
   }
-
-
   const stopGeneration = () => {
     setIsGenerationStopped(true)
     setCurrentStep("input")
@@ -301,7 +311,6 @@ export default function AIVideoGeneratorPOC() {
     setIsGeneratingStory(false)
     setFrameProgress({})
   }
-
   const regenerateFrames = () => {
     // Stop any ongoing generation and return to input step
     setCurrentStep("input")
@@ -312,7 +321,6 @@ export default function AIVideoGeneratorPOC() {
     setSelectedFrameIndex(0)
     setIsGenerationStopped(false)
     setFrameProgress({})
-    // Keep the existing prompt, image, and story so user can modify them
   }
 
   const FrameViewer = ({ frames }: { frames: VideoFrame[] }) => {
@@ -525,39 +533,71 @@ export default function AIVideoGeneratorPOC() {
                           {isGeneratingStory ? (
                             <>
                               <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                              Generating Story...
+                              Generating Enhanced Story (2-Step)...
                             </>
                           ) : (
                             <>
                               <Wand2 className="h-4 w-4 mr-2" />
-                              Generate Rich Story
+                              Generate Enhanced Story (2-Step)
                             </>
                           )}
                         </Button>
                         {generatedStory && (
                           <Badge variant="secondary" className="self-center">
-                            Story Ready: {generatedStory.story?.title}
+                            Enhanced Story Ready: {generatedStory.enhancedStory?.title}
                           </Badge>
                         )}
 
                       </div>
                       {/* Story Preview */}
                       {generatedStory && !isGeneratingStory && (
-                        <div className="mt-4 p-4 bg-blue-50 rounded-lg border">
-                          <h4 className="font-semibold text-blue-900 mb-2">
-                            📖 {generatedStory.story.title}
-                          </h4>
-                          <p className="text-sm text-blue-800 mb-3">
-                            {generatedStory.story.overallStory}
-                          </p>
-                          <div className="space-y-2">
-                            <h5 className="text-sm font-medium text-blue-900">Scene Breakdown:</h5>
-                            {generatedStory.story.scenes.map((scene, index: number) => (
-                              <div key={index} className="text-xs text-blue-700 bg-white p-2 rounded">
-                                <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
-                              </div>
-                            ))}
+                        <div className="mt-4 space-y-4">
+                          {/* Enhanced Story (Final Result) */}
+                          <div className="p-4 bg-blue-50 rounded-lg border">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-blue-900">
+                                📖 Enhanced Story (Final)
+                              </h4>
+                              <Badge variant="outline" className="text-xs">2-Step Process</Badge>
+                            </div>
+                            <h5 className="text-sm font-medium text-blue-800 mb-2">
+                              {generatedStory.enhancedStory.title}
+                            </h5>
+                            <p className="text-sm text-blue-800 mb-3">
+                              {generatedStory.enhancedStory.overallStory}
+                            </p>
+                            <div className="space-y-2">
+                              <h6 className="text-sm font-medium text-blue-900">Enhanced Scene Breakdown:</h6>
+                              {generatedStory.enhancedStory.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string }, index: number) => (
+                                <div key={index} className="text-xs text-blue-700 bg-white p-2 rounded">
+                                  <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
+                                </div>
+                              ))}
+                            </div>
                           </div>
+
+                          {/* Original Story (First Generation) - Collapsible */}
+                          <details className="p-3 bg-gray-50 rounded-lg border">
+                            <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
+                              📝 Original Story (Step 1) - Click to expand
+                            </summary>
+                            <div className="mt-3 space-y-2">
+                              <h5 className="text-sm font-medium text-gray-800">
+                                {generatedStory.firstStory.title}
+                              </h5>
+                              <p className="text-sm text-gray-700 mb-3">
+                                {generatedStory.firstStory.overallStory}
+                              </p>
+                              <div className="space-y-2">
+                                <h6 className="text-sm font-medium text-gray-800">Original Scene Breakdown:</h6>
+                                {generatedStory.firstStory.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string }, index: number) => (
+                                  <div key={index} className="text-xs text-gray-600 bg-white p-2 rounded">
+                                    <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </details>
                         </div>
                       )}
                     </div>
