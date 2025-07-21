@@ -450,10 +450,8 @@ export default function AIVideoGeneratorPOC() {
         </div>
 
         <Tabs defaultValue="generator" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="generator">Video Generator</TabsTrigger>
-            <TabsTrigger value="workflow">Workflow</TabsTrigger>
-            <TabsTrigger value="tools">AI Tools</TabsTrigger>
             <TabsTrigger value="documentation">Documentation</TabsTrigger>
           </TabsList>
           <TabsContent value="generator" className="space-y-6">
@@ -824,285 +822,172 @@ export default function AIVideoGeneratorPOC() {
             )}
           </TabsContent>
 
-          <TabsContent value="workflow" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Two-Step AI Video Generation Workflow</CardTitle>
-                <CardDescription>Detailed breakdown of the frame-first video generation process</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-8">
-                  {/* Step 1 */}
-                  <div className="border-l-4 border-blue-500 pl-6">
-                    <h3 className="text-xl font-semibold mb-4 text-blue-600">Step 1: Frame Generation</h3>
-                    <div className="space-y-4">
-                      {[
-                        {
-                          title: "Prompt Analysis",
-                          description:
-                            "AI analyzes the text prompt to understand scene requirements, character actions, and visual elements",
-                          tools: ["GPT-4", "Claude", "Custom NLP models"],
-                        },
-                        {
-                          title: "Character Modeling",
-                          description:
-                            "Extract facial features from uploaded photo and create consistent character model",
-                          tools: ["MediaPipe", "Face++", "Custom ML models"],
-                        },
-                        {
-                          title: "Scene Planning",
-                          description: "Plan 8 keyframes with specific timestamps and scene descriptions",
-                          tools: ["Storyboard AI", "Scene planning algorithms"],
-                        },
-                        {
-                          title: "Frame Generation",
-                          description: "Generate individual frames maintaining character consistency across all scenes",
-                          tools: ["Stable Diffusion", "Midjourney API", "Custom image models"],
-                        },
-                      ].map((substep, index) => (
-                        <div key={index} className="flex gap-4">
-                          <div className="flex-shrink-0">
-                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-sm font-medium">
-                              {index + 1}
-                            </div>
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <h4 className="font-semibold">{substep.title}</h4>
-                            <p className="text-gray-600 text-sm">{substep.description}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {substep.tools.map((tool, toolIndex) => (
-                                <Badge key={toolIndex} variant="outline" className="text-xs">
-                                  {tool}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
 
-                  {/* Step 2 */}
-                  <div className="border-l-4 border-green-500 pl-6">
-                    <h3 className="text-xl font-semibold mb-4 text-green-600">Step 2: Video Compilation</h3>
-                    <div className="space-y-4">
-                      {[
-                        {
-                          title: "Frame Consistency Check",
-                          description: "Analyze generated frames for character consistency and visual coherence",
-                          tools: ["Computer Vision", "Consistency algorithms"],
-                        },
-                        {
-                          title: "Transition Generation",
-                          description: "Create smooth transitions between keyframes using interpolation",
-                          tools: ["Motion interpolation", "Optical flow"],
-                        },
-                        {
-                          title: "Effects and Enhancement",
-                          description: "Add motion blur, lighting effects, and visual enhancements",
-                          tools: ["After Effects API", "Custom shaders"],
-                        },
-                        {
-                          title: "Video Rendering",
-                          description: "Compile frames into final MP4 with proper timing and compression",
-                          tools: ["FFmpeg", "Video codecs", "Compression algorithms"],
-                        },
-                      ].map((substep, index) => (
-                        <div key={index} className="flex gap-4">
-                          <div className="flex-shrink-0">
-                            <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-sm font-medium">
-                              {index + 1}
-                            </div>
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <h4 className="font-semibold">{substep.title}</h4>
-                            <p className="text-gray-600 text-sm">{substep.description}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {substep.tools.map((tool, toolIndex) => (
-                                <Badge key={toolIndex} variant="outline" className="text-xs">
-                                  {tool}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="tools" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>AI Tools for Two-Step Process</CardTitle>
-                <CardDescription>
-                  Tools categorized by their role in frame generation vs video compilation
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Frame Generation Tools */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-blue-600">Step 1: Frame Generation Tools</h3>
-                    {[
-                      {
-                        name: "Stable Diffusion",
-                        description: "Generate consistent character images across frames",
-                        features: ["Character consistency", "Style control", "Batch generation"],
-                      },
-                      {
-                        name: "Midjourney API",
-                        description: "High-quality artistic frame generation",
-                        features: ["Artistic styles", "Character reference", "Scene composition"],
-                      },
-                      {
-                        name: "DALL-E 3",
-                        description: "Prompt-based frame generation with character consistency",
-                        features: ["Text understanding", "Character persistence", "Scene variety"],
-                      },
-                    ].map((tool, index) => (
-                      <Card key={index}>
-                        <CardHeader>
-                          <CardTitle className="text-base">{tool.name}</CardTitle>
-                          <CardDescription className="text-sm">{tool.description}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex flex-wrap gap-1">
-                            {tool.features.map((feature, featureIndex) => (
-                              <Badge key={featureIndex} variant="secondary" className="text-xs">
-                                {feature}
-                              </Badge>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-
-                  {/* Video Compilation Tools */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-green-600">Step 2: Video Compilation Tools</h3>
-                    {[
-                      {
-                        name: "Runway ML",
-                        description: "Frame-to-video compilation with AI enhancement",
-                        features: ["Frame interpolation", "Motion generation", "Video effects"],
-                      },
-                      {
-                        name: "Pika Labs",
-                        description: "Transform static frames into animated sequences",
-                        features: ["Animation generation", "Smooth transitions", "Style preservation"],
-                      },
-                      {
-                        name: "FFmpeg + AI",
-                        description: "Professional video rendering with AI-enhanced transitions",
-                        features: ["Video encoding", "Transition effects", "Quality optimization"],
-                      },
-                    ].map((tool, index) => (
-                      <Card key={index}>
-                        <CardHeader>
-                          <CardTitle className="text-base">{tool.name}</CardTitle>
-                          <CardDescription className="text-sm">{tool.description}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex flex-wrap gap-1">
-                            {tool.features.map((feature, featureIndex) => (
-                              <Badge key={featureIndex} variant="secondary" className="text-xs">
-                                {feature}
-                              </Badge>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           <TabsContent value="documentation" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Two-Step Process Documentation</CardTitle>
-                <CardDescription>Technical implementation and benefits of the frame-first approach</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-3">Why Two Steps?</h3>
-                  <Alert>
-                    <AlertDescription>
-                      <ul className="space-y-1 text-sm">
-                        <li>
-                          • <strong>Quality Control:</strong> Review and approve frames before video generation
-                        </li>
-                        <li>
-                          • <strong>Cost Efficiency:</strong> Avoid expensive video regeneration for frame issues
-                        </li>
-                        <li>
-                          • <strong>Flexibility:</strong> Modify individual frames without regenerating entire video
-                        </li>
-                        <li>
-                          • <strong>Consistency:</strong> Ensure character appearance is consistent across all frames
-                        </li>
-                        <li>
-                          • <strong>Debugging:</strong> Identify and fix issues at the frame level
-                        </li>
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-3">Technical Benefits</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Step 1 Advantages</h4>
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <p>• Parallel frame generation</p>
-                        <p>• Individual frame optimization</p>
-                        <p>• Character consistency validation</p>
-                        <p>• Scene composition control</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* How It Works */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Wand2 className="h-5 w-5" />
+                    How It Works
+                  </CardTitle>
+                  <CardDescription>Understanding the AI video generation process</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-sm font-medium flex-shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Story Generation</h4>
+                        <p className="text-xs text-gray-600">AI analyzes your prompt and creates a detailed story with scene breakdowns</p>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Step 2 Advantages</h4>
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <p>• Optimized video compilation</p>
-                        <p>• Professional transitions</p>
-                        <p>• Efficient rendering pipeline</p>
-                        <p>• Quality-focused output</p>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-sm font-medium flex-shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Frame Creation</h4>
+                        <p className="text-xs text-gray-600">Generate 6 key frames using your photo and story-enhanced prompts</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-sm font-medium flex-shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-sm">Video Compilation</h4>
+                        <p className="text-xs text-gray-600">Transform frames into smooth video with transitions and effects</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Best Practices */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Video className="h-5 w-5" />
+                    Best Practices
+                  </CardTitle>
+                  <CardDescription>Tips for optimal video generation</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                      <p className="text-xs text-gray-700">Use clear, descriptive prompts with specific actions</p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                      <p className="text-xs text-gray-700">Upload high-quality photos with good lighting</p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                      <p className="text-xs text-gray-700">Include scene context and character emotions</p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                      <p className="text-xs text-gray-700">Review frames before video generation</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Technical Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Technical Architecture</CardTitle>
+                <CardDescription>Advanced implementation details and system components</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-blue-600">Story Enhancement</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">GPT-4</Badge>
+                        <span className="text-gray-600">Initial story generation</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Claude</Badge>
+                        <span className="text-gray-600">Story enhancement</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Custom NLP</Badge>
+                        <span className="text-gray-600">Scene breakdown</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-green-600">Image Generation</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Stable Diffusion</Badge>
+                        <span className="text-gray-600">Frame generation</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">ControlNet</Badge>
+                        <span className="text-gray-600">Character consistency</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">LoRA</Badge>
+                        <span className="text-gray-600">Style adaptation</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-purple-600">Video Processing</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">FFmpeg</Badge>
+                        <span className="text-gray-600">Video compilation</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">OpenCV</Badge>
+                        <span className="text-gray-600">Frame analysis</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">WebM</Badge>
+                        <span className="text-gray-600">Output format</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="font-semibold mb-3">Performance Metrics</h3>
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold mb-3">Performance Optimization</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">8</div>
-                      <div className="text-xs text-gray-600">Frames Generated</div>
+                      <div className="text-lg font-bold text-blue-600">6</div>
+                      <div className="text-xs text-gray-600">Frames</div>
                     </div>
                     <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">12s</div>
-                      <div className="text-xs text-gray-600">Frame Generation</div>
+                      <div className="text-lg font-bold text-green-600">~30s</div>
+                      <div className="text-xs text-gray-600">Generation</div>
                     </div>
                     <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">12s</div>
-                      <div className="text-xs text-gray-600">Video Compilation</div>
+                      <div className="text-lg font-bold text-purple-600">1080p</div>
+                      <div className="text-xs text-gray-600">Resolution</div>
                     </div>
                     <div className="text-center p-3 bg-orange-50 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-600">95%</div>
-                      <div className="text-xs text-gray-600">Frame Consistency</div>
+                      <div className="text-lg font-bold text-orange-600">30fps</div>
+                      <div className="text-xs text-gray-600">Frame Rate</div>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
+
+
           </TabsContent>
         </Tabs>
       </div>
