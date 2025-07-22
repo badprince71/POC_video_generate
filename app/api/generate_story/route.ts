@@ -5,9 +5,37 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Helper function to extract JSON from AI response
+function extractJSONFromResponse(content: string): string {
+    // Remove markdown code blocks if present
+    let cleanedContent = content.trim();
+    
+    console.log("Original content starts with:", cleanedContent.substring(0, 50));
+    
+    // Check if content is wrapped in markdown code blocks
+    if (cleanedContent.startsWith('```json')) {
+        console.log("Removing ```json prefix");
+        cleanedContent = cleanedContent.replace(/^```json\s*/, '');
+    } else if (cleanedContent.startsWith('```')) {
+        console.log("Removing ``` prefix");
+        cleanedContent = cleanedContent.replace(/^```\s*/, '');
+    }
+    
+    // Remove closing markdown code blocks
+    if (cleanedContent.endsWith('```')) {
+        console.log("Removing ``` suffix");
+        cleanedContent = cleanedContent.replace(/\s*```$/, '');
+    }
+    
+    const result = cleanedContent.trim();
+    console.log("Cleaned content starts with:", result.substring(0, 50));
+    
+    return result;
+}
+
 export async function POST(request: NextRequest) {
     try {
-        const { prompt } = await request.json();
+        const { prompt, frameCount = 6 } = await request.json();
         
         // Validation
         if (!prompt) {
@@ -17,20 +45,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "OpenAI API key is not set" }, { status: 500 })
         }
 
-        console.log(`Generating story from prompt: "${prompt}"`);
+        console.log(`Generating story from prompt: "${prompt}" with ${frameCount} frames`);
 
         // FIRST STORY GENERATION
         console.log("Starting first story generation...");
         const firstStoryResponse = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-4.1",
             messages: [
                 {
                     role: "system",
-                    content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to transform a user prompt into a rich, engaging 30-second video story with 6 distinct scenes (5 seconds each).
+                    content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to transform a user prompt into a rich, engaging video story with ${frameCount} distinct scenes (${Math.floor(30/frameCount)} seconds each).
 
 CRITICAL REQUIREMENTS:
 1. **STRICT PROMPT ADHERENCE**: Every scene MUST directly incorporate the core elements, theme, and scenario from the original user prompt. Do not deviate from what the user specifically requested.
-2. **SCENE CONSISTENCY**: All 6 scenes should be variations and progressions of the SAME core scenario described in the original prompt.
+2. **SCENE CONSISTENCY**: All ${frameCount} scenes should be variations and progressions of the SAME core scenario described in the original prompt.
 3. **MAIN FEATURE PRESERVATION**: The main features, objects, actions, and settings mentioned in the original prompt must appear in EVERY scene.
 4. **NARRATIVE COHERENCE**: Each scene should be a natural progression of the same story, not different scenarios.
 5. **AVOID SPECIFIC APPEARANCE DETAILS**: Do NOT mention specific clothing items, glasses, accessories, or appearance details that might not match the user's actual photo.
@@ -57,7 +85,9 @@ The story should be:
 - Directly connected to and expanding upon the original user prompt
 - Appearance-neutral, focusing on actions and emotions rather than specific clothing/accessories
 
-Format your response as JSON with this structure:
+IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. Do not wrap your response in \`\`\`json or \`\`\` blocks.
+
+Format your response as pure JSON with this structure:
 {
   "title": "Story Title that reflects the original prompt",
   "overallStory": "Comprehensive story summary that directly implements and expands the original user prompt",
@@ -85,12 +115,12 @@ ORIGINAL USER REQUEST: "${prompt}"
 
 CRITICAL INSTRUCTIONS:
 1. **EXACT PROMPT IMPLEMENTATION**: Every scene MUST directly implement the exact scenario, objects, actions, and setting described in the original prompt.
-2. **SCENE CONSISTENCY**: All 6 scenes should be variations of the SAME core scenario from the original prompt, not different scenarios.
+2. **SCENE CONSISTENCY**: All ${frameCount} scenes should be variations of the SAME core scenario from the original prompt, not different scenarios.
 3. **MAIN FEATURES**: The main features, objects, and actions mentioned in the original prompt must appear in EVERY scene.
 4. **NO DEVIATION**: Do not add elements that are not mentioned in or related to the original prompt.
 5. **AVOID APPEARANCE DETAILS**: Do NOT mention specific clothing items, glasses, accessories, or appearance details. Focus on actions, emotions, and the scenario.
 
-Break it down into 6 cinematic scenes (5 seconds each for a 30-second total). Each scene should be described with maximum detail including:
+Break it down into ${frameCount} cinematic scenes (${Math.floor(30/frameCount)} seconds each for a ${frameCount * Math.floor(30/frameCount)}-second total). Each scene should be described with maximum detail including:
 
 - **Complete scenario context** that directly implements the original prompt
 - **Character positioning and expressions** that fulfill the original prompt's requirements (avoid specific clothing/accessories)
@@ -127,9 +157,12 @@ The story should have a complete narrative arc with setup, development, climax, 
 
         let firstStoryData;
         try {
-            firstStoryData = JSON.parse(firstStoryContent);
+            const cleanedContent = extractJSONFromResponse(firstStoryContent);
+            console.log("Cleaned first story content:", cleanedContent.substring(0, 200) + "...");
+            firstStoryData = JSON.parse(cleanedContent);
         } catch (parseError) {
             console.error("Failed to parse first story JSON:", parseError);
+            console.error("Original content:", firstStoryContent);
             return NextResponse.json({ error: "Failed to parse generated first story" }, { status: 500 });
         }
 
@@ -138,11 +171,11 @@ The story should have a complete narrative arc with setup, development, climax, 
         // SECOND STORY GENERATION - using first story as input
         console.log("Starting second story generation using first story as input...");
         const secondStoryResponse = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-4.1",
             messages: [
                 {
                     role: "system",
-                    content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to take an existing story and enhance it with even more detail, depth, and cinematic quality for a 30-second video with 6 distinct scenes (5 seconds each).
+                    content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to take an existing story and enhance it with even more detail, depth, and cinematic quality for a video with ${frameCount} distinct scenes (${Math.floor(30/frameCount)} seconds each).
 
 CRITICAL REQUIREMENTS:
 1. **ENHANCE THE EXISTING STORY**: Use the provided first story as your foundation and enhance it with more detail, emotional depth, and cinematic elements.
@@ -171,7 +204,9 @@ The enhanced story should be:
 - More directly connected to and expanding upon the original user prompt
 - More appearance-neutral, focusing on actions and emotions
 
-Format your response as JSON with this structure:
+IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. Do not wrap your response in \`\`\`json or \`\`\` blocks.
+
+Format your response as pure JSON with this structure:
 {
   "title": "Enhanced Story Title",
   "overallStory": "Enhanced comprehensive story summary with more detail and cinematic elements",
@@ -207,7 +242,7 @@ CRITICAL INSTRUCTIONS:
 4. **IMPROVE NARRATIVE FLOW**: Make the transitions between scenes even smoother and more engaging.
 5. **AVOID APPEARANCE DETAILS**: Do NOT mention specific clothing items, glasses, accessories, or appearance details.
 
-Enhance the 6 cinematic scenes (5 seconds each for a 30-second total) with even more detail including:
+Enhance the ${frameCount} cinematic scenes (${(frameCount-1)*5} seconds each for a ${frameCount *5}-second total) with even more detail including:
 
 - **Enhanced scenario context** with more cinematic elements
 - **More detailed character positioning and expressions** with emotional depth
@@ -244,9 +279,12 @@ The enhanced story should have an even more complete narrative arc with enhanced
 
         let secondStoryData;
         try {
-            secondStoryData = JSON.parse(secondStoryContent);
+            const cleanedContent = extractJSONFromResponse(secondStoryContent);
+            console.log("Cleaned second story content:", cleanedContent.substring(0, 200) + "...");
+            secondStoryData = JSON.parse(cleanedContent);
         } catch (parseError) {
             console.error("Failed to parse second story JSON:", parseError);
+            console.error("Original content:", secondStoryContent);
             return NextResponse.json({ error: "Failed to parse generated second story" }, { status: 500 });
         }
 
@@ -306,8 +344,8 @@ Original Prompt Connection: ${originalPromptConnection}
             firstStory: firstStoryData,
             enhancedStory: secondStoryData,
             framePrompts: framePrompts,
-            totalFrames: 6,
-            videoDuration: "30 seconds"
+            totalFrames: frameCount,
+            videoDuration: `${frameCount * Math.floor(30/frameCount)} seconds`
         });
 
     } catch (error) {
