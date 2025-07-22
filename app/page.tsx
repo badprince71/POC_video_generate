@@ -2,6 +2,7 @@
 
 import type React from "react"
 import Image from "next/image"
+import Link from "next/link"
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,10 +23,11 @@ import {
   ArrowRight,
   Palette,
   Heart,
+  Library,
+  Home,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 
 interface VideoFrame {
@@ -46,9 +48,9 @@ interface GeneratedVideo {
   videoClips?: string[] // Array of individual video clip URLs
 }
 
-type GenerationStep = "input" | "generating-frames" | "frames-ready" | "generating-video" | "video-ready"
+type GenerationStep = "input" | "generating-frames" | "frames-ready"
 
-export default function AIVideoGeneratorPOC() {
+export default function FrameGenerationPage() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string>("")
   const [prompt, setPrompt] = useState("")
@@ -58,9 +60,7 @@ export default function AIVideoGeneratorPOC() {
   const [frameCount, setFrameCount] = useState<number>(6)
   const [currentStep, setCurrentStep] = useState<GenerationStep>("input")
   const [generatedFrames, setGeneratedFrames] = useState<VideoFrame[]>([])
-  const [generatedVideo, setGeneratedVideo] = useState<GeneratedVideo | null>(null)
   const [frameGenerationProgress, setFrameGenerationProgress] = useState(0)
-  const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
   const [isGenerationStopped, setIsGenerationStopped] = useState(false)
   const [frameProgress, setFrameProgress] = useState<{ [key: number]: boolean }>({})
@@ -92,6 +92,8 @@ export default function AIVideoGeneratorPOC() {
   } | null>(null)
   const [isGeneratingStory, setIsGeneratingStory] = useState(false)
   const [storyGenerationStep, setStoryGenerationStep] = useState<'idle' | 'first-story' | 'enhancing' | 'complete'>('idle')
+  const [storyGenerationProgress, setStoryGenerationProgress] = useState(0)
+  const [isEditingStory, setIsEditingStory] = useState(false)
 
   // Style and Mood options
   const styleOptions = ["Realistic", "Artistic", "Cartoon", "Abstract", "Photographic", "Digital Art"]
@@ -131,16 +133,29 @@ export default function AIVideoGeneratorPOC() {
 
     setIsGeneratingStory(true)
     setStoryGenerationStep('first-story')
+    setStoryGenerationProgress(0)
     
     try {
       const enhancedPrompt = createEnhancedPrompt(prompt, selectedStyle, selectedMood)
       
+      // Start progress bar animation (1 minute to reach 98%)
+      const startTime = Date.now()
+      const duration = 60000 // 1 minute in milliseconds
+      const targetProgress = 98
+      
+      const progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const progress = Math.min((elapsed / duration) * targetProgress, targetProgress)
+        setStoryGenerationProgress(progress)
+        
+        if (progress >= targetProgress) {
+          clearInterval(progressInterval)
+        }
+      }, 100) // Update every 100ms for smooth animation
+      
       // Step 1: First story generation
       setStoryGenerationStep('first-story')
       console.log("Starting first story generation...")
-      
-      // Simulate first story generation time
-      await new Promise(resolve => setTimeout(resolve, 2000))
       
       const response = await fetch("/api/generate_story", {
         method: "POST",
@@ -161,28 +176,28 @@ export default function AIVideoGeneratorPOC() {
       if (response.error) {
         console.error("Story API Error:", response.error)
         alert(`Error: ${response.error}`)
+        clearInterval(progressInterval)
         return
       }
 
       // Step 2: Story enhancement (this happens in the API)
       setStoryGenerationStep('enhancing')
       console.log("Story enhancement in progress...")
-      
-      // Simulate enhancement time to show the step
-      await new Promise(resolve => setTimeout(resolve, 1500))
 
       setGeneratedStory(response)
       setStoryGenerationStep('complete')
+      setStoryGenerationProgress(100) // Complete the progress bar
       console.log("Generated story:", response)
       
       // Keep complete status for a moment before hiding
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 2000))
     } catch (error) {
       console.error("Error generating story:", error)
       alert("Failed to generate story")
     } finally {
       setIsGeneratingStory(false)
       setStoryGenerationStep('idle')
+      setStoryGenerationProgress(0)
     }
   }
 
@@ -209,6 +224,7 @@ export default function AIVideoGeneratorPOC() {
         if (isGenerationStopped) {
           throw new Error("Generation stopped")
         }
+
         console.log(`Starting generation for frame ${i + 1}/${frameCount}`)
         
         // Use story-generated prompt if available, otherwise use enhanced prompt
@@ -312,186 +328,10 @@ export default function AIVideoGeneratorPOC() {
       }
     }
   }
+
   const stopGeneration = () => {
     setIsGenerationStopped(true)
     setCurrentStep("input")
-  }
-
-  const generateVideo = async () => {
-    if (generatedFrames.length === 0) return
-
-    setCurrentStep("generating-video")
-    setVideoGenerationProgress(0)
-    setIsGenerationStopped(false)
-
-    try {
-      const totalClips = generatedFrames.length - 1 // Number of transitions between frames
-      const generatedClips: string[] = []
-
-      // Generate video clips for each pair of consecutive frames
-      for (let i = 0; i < totalClips; i++) {
-        // Check if generation was stopped
-        if (isGenerationStopped) {
-          setCurrentStep("frames-ready")
-          return
-        }
-
-        const startImage = generatedFrames[i].imageUrl
-        const endImage = generatedFrames[i + 1].imageUrl
-        
-        console.log(`Generating video clip ${i + 1}/${totalClips} (${generatedFrames[i].timestamp} to ${generatedFrames[i + 1].timestamp})`)
-
-        // Update progress
-        setVideoGenerationProgress(((i) / totalClips) * 100)
-
-        // Use story-enhanced prompt if available, otherwise use enhanced prompt
-        const baseClipPrompt = generatedStory && generatedStory.enhancedStory.scenes[i] 
-          ? generatedStory.enhancedStory.scenes[i].description 
-          : prompt;
-        
-        // Enhance the clip prompt with style and mood
-        const clipPrompt = createEnhancedPrompt(baseClipPrompt, selectedStyle, selectedMood);
-
-        // Call Runway API to generate video clip with retry mechanism
-        let response
-        let retryCount = 0
-        const maxRetries = 2
-        
-        while (retryCount <= maxRetries) {
-          try {
-            response = await fetch("/api/generate_video_clips", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                startImage: startImage,
-                endImage: endImage,
-                clipIndex: i,
-                totalClips: totalClips,
-                prompt: clipPrompt
-              }),
-            })
-            .then((res) => res.json())
-            
-            // If successful, break out of retry loop
-            if (response.videoUrl && !response.error) {
-              break
-            }
-            
-            // If it's a timeout and we have retries left, try again
-            if (response.error && (response.error.includes('timed out') || response.error.includes('408')) && retryCount < maxRetries) {
-              console.warn(`Video clip ${i + 1} timed out, retrying... (attempt ${retryCount + 1}/${maxRetries})`)
-              retryCount++
-              await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds before retry
-              continue
-            }
-            
-            break // Exit retry loop for other errors or max retries reached
-            
-          } catch (error) {
-            console.error(`Error generating video clip ${i + 1} (attempt ${retryCount + 1}):`, error)
-            if (retryCount < maxRetries) {
-              retryCount++
-              await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds before retry
-              continue
-            }
-            response = { error: "Failed to generate video clip after retries" }
-            break
-          }
-        }
-        if (response.error) {
-          console.error(`Video clip ${i + 1} generation failed:`, response.error)
-          
-          // Handle timeout specifically
-          if (response.error.includes('timed out') || response.error.includes('408')) {
-            console.warn(`Video clip ${i + 1} timed out, continuing with next clip...`)
-            // Continue with next clip instead of failing completely
-            continue
-          }
-          
-          throw new Error(`Clip ${i + 1}: ${response.error}`)
-        }
-
-        if (response.videoUrl) {
-          generatedClips.push(response.videoUrl)
-          console.log(`Video clip ${i + 1} generated successfully:`, response.videoUrl)
-        }
-
-        // Update progress after each clip (account for partial success)
-        const progressPercentage = Math.min(((i + 1) / totalClips) * 100, 90) // Cap at 90% before merging
-        setVideoGenerationProgress(progressPercentage)
-      }
-
-      // Check if generation was stopped during the process
-      if (isGenerationStopped) {
-        setCurrentStep("frames-ready")
-        return
-      }
-
-      // Check if we have any successful clips
-      if (generatedClips.length === 0) {
-        throw new Error("No video clips were generated successfully")
-      }
-
-      console.log(`Successfully generated ${generatedClips.length} out of ${totalClips} video clips`)
-
-      // Merge all video clips into a final video
-      console.log("Merging video clips into final video...")
-      setVideoGenerationProgress(95) // Show merging progress
-
-      const mergeResponse = await fetch("/api/merge_video_clips", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          videoClips: generatedClips,
-          outputFileName: `final_video_${Date.now()}.mp4`
-        }),
-      })
-      .then((res) => res.json())
-      .catch((error) => {
-        console.error("Error merging video clips:", error)
-        return { error: "Failed to merge video clips" }
-      })
-
-      if (mergeResponse.error) {
-        console.error("Video merging failed:", mergeResponse.error)
-        throw new Error(`Video merging failed: ${mergeResponse.error}`)
-      }
-
-      setVideoGenerationProgress(100)
-
-      // Create final video object with merged video
-      const video: GeneratedVideo = {
-        id: "generated-" + Date.now(),
-        title: "Your Generated Video",
-        duration: `${totalClips * 5}s`,
-        prompt: prompt,
-        frames: generatedFrames,
-        videoUrl: mergeResponse.mergedVideoUrl || generatedClips[0] || "/placeholder-video.mp4",
-        videoClips: generatedClips // Store all clips for individual viewing
-      }
-
-      setGeneratedVideo(video)
-      setCurrentStep("video-ready")
-      console.log(`All ${totalClips} video clips generated and merged successfully!`)
-      
-      // Show success message with clip count
-      if (generatedClips.length < totalClips) {
-        console.warn(`Note: ${totalClips - generatedClips.length} clips failed to generate due to timeouts`)
-      }
-
-    } catch (error) {
-      console.error("Error during video generation:", error)
-      
-      // If generation was stopped, don't show error
-      if (!isGenerationStopped) {
-        alert(`Error generating video: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        setCurrentStep("frames-ready")
-      }
-    }
   }
 
   const getFrameDescription = (frameIndex: number): string => {
@@ -512,17 +352,17 @@ export default function AIVideoGeneratorPOC() {
     
     return descriptions[frameIndex] || `Frame ${frameIndex + 1} content`
   }
+
   const resetGeneration = () => {
     setCurrentStep("input")
     setGeneratedFrames([])
-    setGeneratedVideo(null)
     setFrameGenerationProgress(0)
-    setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
     setIsGenerationStopped(false)
     setGeneratedStory(null)
     setIsGeneratingStory(false)
     setStoryGenerationStep('idle')
+    setStoryGenerationProgress(0)
     setFrameProgress({})
     setSelectedStyle("Realistic")
     setSelectedMood("Vibrant")
@@ -566,9 +406,7 @@ export default function AIVideoGeneratorPOC() {
     // Stop any ongoing generation and return to input step
     setCurrentStep("input")
     setGeneratedFrames([])
-    setGeneratedVideo(null)
     setFrameGenerationProgress(0)
-    setVideoGenerationProgress(0)
     setSelectedFrameIndex(0)
     setIsGenerationStopped(false)
     setFrameProgress({})
@@ -579,7 +417,24 @@ export default function AIVideoGeneratorPOC() {
     setGeneratedStory(null)
     setIsGeneratingStory(false)
     setStoryGenerationStep('idle')
+    setStoryGenerationProgress(0)
+    setIsEditingStory(false)
   }
+
+  const modifyStory = () => {
+    setIsEditingStory(true)
+  }
+
+  const saveStoryChanges = () => {
+    setIsEditingStory(false)
+    // Here you could add logic to save the modified story
+    console.log("Story changes saved")
+  }
+
+  const cancelStoryEdit = () => {
+    setIsEditingStory(false)
+  }
+
   const FrameViewer = ({ frames }: { frames: VideoFrame[] }) => {
     if (frames.length === 0) return null
 
@@ -667,842 +522,590 @@ export default function AIVideoGeneratorPOC() {
       </div>
     )
   }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-4">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-            AI Video Generator POC
-          </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Two-step process: First generate frames from your prompt, then create the final video
-          </p>
-        </div>
-
-        {/* Progress Indicator */}
-        <div className="flex items-center justify-center space-x-4">
-          <div
-            className={`flex items-center space-x-2 ${currentStep === "input" || currentStep === "generating-frames" ? "text-blue-600" : "text-gray-400"}`}
-          >
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === "input" || currentStep === "generating-frames" ? "bg-blue-100" : "bg-gray-100"}`}
-            >
-              1
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      {/* Navigation Header */}
+      <nav className="bg-white shadow-sm border-b">
+        <div className="max-w-6xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                AI Video Generator
+              </h1>
+              <div className="flex items-center gap-4">
+                <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
+                  <Home className="h-4 w-4" />
+                  Frame Generation
+                </Link>
+                <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Video className="h-4 w-4" />
+                  Video Generation
+                </Link>
+                <Link href="/library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Library className="h-4 w-4" />
+                  My Library
+                </Link>
+              </div>
             </div>
-            <span className="text-sm font-medium">Generate Frames</span>
-          </div>
-          <ArrowRight className="h-4 w-4 text-gray-400" />
-          <div
-            className={`flex items-center space-x-2 ${currentStep === "frames-ready" || currentStep === "generating-video" || currentStep === "video-ready" ? "text-blue-600" : "text-gray-400"}`}
-          >
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === "frames-ready" || currentStep === "generating-video" || currentStep === "video-ready" ? "bg-blue-100" : "bg-gray-100"}`}
-            >
-              2
-            </div>
-            <span className="text-sm font-medium">Generate Video</span>
           </div>
         </div>
-        <Tabs defaultValue="generator" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="generator">Video Generator</TabsTrigger>
-            <TabsTrigger value="documentation">Documentation</TabsTrigger>
-          </TabsList>
-          <TabsContent value="generator" className="space-y-6">
-            {/* Step 1: Input and Frame Generation */}
-            {(currentStep === "input" || currentStep === "generating-frames") && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Upload className="h-5 w-5" />
-                      Step 1: Input Configuration
-                    </CardTitle>
-                    <CardDescription>Upload your photo and describe the video you want to create</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="image-upload">Upload Your Photo</Label>
-                      <div className="mt-1">
-                        <div className="relative">
-                          <input
-                            id="image-upload"
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            disabled=
-                            {currentStep === "generating-frames"}
-                          />
+      </nav>
 
-                          <div className="flex items-center justify-center w-full h-12 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors duration-200 cursor-pointer">
-                            <Upload className="h-5 w-5 mr-2 text-gray-500" />
-                            <span className="text-sm font-medium text-gray-700">
-                              {selectedImage ? selectedImage.name : "Choose a photo or drag and drop"}
-                            </span>
-                          </div>
-                        </div>
-                        {imagePreview && (
-                          <div className="mt-3">
-                            <Image
-                              src={imagePreview || "/placeholder.svg"}
-                              alt="Preview"
-                              width={128}
-                              height={128}
-                              className="w-32 h-32 object-cover rounded-lg border shadow-sm"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="prompt">Video Description</Label>
-                      <Textarea
-                        id="prompt"
-                        placeholder="Describe your video... e.g., 'Create a birthday invitation video where I'm celebrating with confetti and balloons in a party setting'"
-                        value={prompt}
-                        onChange={(e) => {
-                          setPrompt(e.target.value)
-                          setGeneratedStory(null) // Clear story when prompt changes
-                        }}
-                        className="mt-1 min-h-[100px]"
+      <div className="p-4">
+        <div className="max-w-6xl mx-auto space-y-8">
+          {/* Page Header */}
+          <div className="text-center space-y-4">
+            <h2 className="text-3xl font-bold text-gray-900">
+              Frame Generation
+            </h2>
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              Generate frames from your prompt and image to create the foundation for your video
+            </p>
+          </div>
+
+          {/* Main Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="h-5 w-5" />
+                  Input Configuration
+                </CardTitle>
+                <CardDescription>Upload your photo and describe the video you want to create</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="image-upload">Upload Your Photo</Label>
+                  <div className="mt-1">
+                    <div className="relative">
+                      <input
+                        id="image-upload"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         disabled={currentStep === "generating-frames"}
                       />
-                      
-                      {/* Video Duration and Style/Mood Selection */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                        <div>
-                          <Label htmlFor="duration-select" className="flex items-center gap-2">
-                            <Video className="h-4 w-4" />
-                            Video Duration
-                          </Label>
-                          <select
-                            id="duration-select"
-                            value={videoDuration}
-                            onChange={(e) => {
-                              const duration = parseInt(e.target.value) || 30
-                              handleVideoDurationChange(duration)
-                              setGeneratedStory(null) // Clear story when duration changes
-                            }}
-                            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            disabled={currentStep === "generating-frames"}
-                          >
-                            {durationOptions.map((duration) => (
-                              <option key={duration} value={duration}>
-                                {duration}s
-                              </option>
-                            ))}
-                          </select>
-                          <div className="mt-1 text-xs text-gray-500">
-                            {frameCount} frames ({videoDuration / frameCount}s per frame)
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor="style-select" className="flex items-center gap-2">
-                            <Palette className="h-4 w-4" />
-                            Style
-                          </Label>
-                          <select
-                            id="style-select"
-                            value={selectedStyle}
-                            onChange={(e) => {
-                              setSelectedStyle(e.target.value)
-                              setGeneratedStory(null) // Clear story when style changes
-                            }}
-                            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            disabled={currentStep === "generating-frames"}
-                          >
-                            {styleOptions.map((style) => (
-                              <option key={style} value={style}>
-                                {style}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor="mood-select" className="flex items-center gap-2">
-                            <Heart className="h-4 w-4" />
-                            Mood
-                          </Label>
-                          <select
-                            id="mood-select"
-                            value={selectedMood}
-                            onChange={(e) => {
-                              setSelectedMood(e.target.value)
-                              setGeneratedStory(null) // Clear story when mood changes
-                            }}
-                            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            disabled={currentStep === "generating-frames"}
-                          >
-                            {moodOptions.map((mood) => (
-                              <option key={mood} value={mood}>
-                                {mood}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                      <div className="flex items-center justify-center w-full h-12 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors duration-200 cursor-pointer">
+                        <Upload className="h-5 w-5 mr-2 text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">
+                          {selectedImage ? selectedImage.name : "Choose a photo or drag and drop"}
+                        </span>
                       </div>
-                      
-                      {/* Enhanced Prompt Preview */}
-                      {prompt && (
-                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="outline" className="text-xs">Enhanced Prompt Preview</Badge>
-                          </div>
-                          <p className="text-sm text-blue-800">
-                            {createEnhancedPrompt(prompt, selectedStyle, selectedMood)}
-                          </p>
-                        </div>
-                      )}
-                      
-                      {/* Story Generator Button */}
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          onClick={generateStory}
-                          disabled={!prompt || isGeneratingStory || currentStep === "generating-frames"}
-                          variant="outline"
-                          size="sm"
-                        >
-                          {isGeneratingStory ? (
-                            <>
-                              <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                              Generating Enhanced Story (2-Step)...
-                            </>
-                          ) : (
-                            <>
-                              <Wand2 className="h-4 w-4 mr-2" />
-                              Generate Enhanced Story (2-Step)
-                            </>
-                          )}
-                        </Button>
-                        {generatedStory && (
-                          <Badge variant="secondary" className="self-center">
-                            Enhanced Story Ready: {generatedStory.enhancedStory?.title}
-                          </Badge>
+                    </div>
+                    {imagePreview && (
+                      <div className="mt-3">
+                        <Image
+                          src={imagePreview || "/placeholder.svg"}
+                          alt="Preview"
+                          width={128}
+                          height={128}
+                          className="w-32 h-32 object-cover rounded-lg border shadow-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="prompt">Video Description</Label>
+                  <Textarea
+                    id="prompt"
+                    placeholder="Describe your video... e.g., 'Create a birthday invitation video where I'm celebrating with confetti and balloons in a party setting'"
+                    value={prompt}
+                    onChange={(e) => {
+                      setPrompt(e.target.value)
+                      setGeneratedStory(null) // Clear story when prompt changes
+                    }}
+                    className="mt-1 min-h-[100px]"
+                    disabled={currentStep === "generating-frames"}
+                  />
+                  
+                  {/* Video Duration and Style/Mood Selection */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <div>
+                      <Label htmlFor="duration-select" className="flex items-center gap-2">
+                        <Video className="h-4 w-4" />
+                        Video Duration
+                      </Label>
+                      <select
+                        id="duration-select"
+                        value={videoDuration}
+                        onChange={(e) => {
+                          const duration = parseInt(e.target.value) || 30
+                          handleVideoDurationChange(duration)
+                          setGeneratedStory(null) // Clear story when duration changes
+                        }}
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={currentStep === "generating-frames"}
+                      >
+                        {durationOptions.map((duration) => (
+                          <option key={duration} value={duration}>
+                            {duration}s
+                          </option>
+                        ))}
+                      </select>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {frameCount} frames ({videoDuration / frameCount}s per frame)
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="style-select" className="flex items-center gap-2">
+                        <Palette className="h-4 w-4" />
+                        Style
+                      </Label>
+                      <select
+                        id="style-select"
+                        value={selectedStyle}
+                        onChange={(e) => {
+                          setSelectedStyle(e.target.value)
+                          setGeneratedStory(null) // Clear story when style changes
+                        }}
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={currentStep === "generating-frames"}
+                      >
+                        {styleOptions.map((style) => (
+                          <option key={style} value={style}>
+                            {style}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="mood-select" className="flex items-center gap-2">
+                        <Heart className="h-4 w-4" />
+                        Mood
+                      </Label>
+                      <select
+                        id="mood-select"
+                        value={selectedMood}
+                        onChange={(e) => {
+                          setSelectedMood(e.target.value)
+                          setGeneratedStory(null) // Clear story when mood changes
+                        }}
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={currentStep === "generating-frames"}
+                      >
+                        {moodOptions.map((mood) => (
+                          <option key={mood} value={mood}>
+                            {mood}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Enhanced Prompt Preview */}
+                  {prompt && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="text-xs">Enhanced Prompt Preview</Badge>
+                      </div>
+                      <p className="text-sm text-blue-800">
+                        {createEnhancedPrompt(prompt, selectedStyle, selectedMood)}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Generated Story Display */}
+                  {generatedStory && !isGeneratingStory && (
+                    <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <Badge variant="outline" className="text-xs bg-green-100 text-green-800">Generated Story</Badge>
+                        {!isEditingStory && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={modifyStory}
+                            className="text-xs"
+                          >
+                            Edit Story
+                          </Button>
                         )}
                       </div>
                       
-                      {/* Story Generation Status */}
-                      {isGeneratingStory && (
-                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                            <span className="text-sm font-medium text-blue-800">Story Generation in Progress</span>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                storyGenerationStep === 'first-story' ? 'bg-blue-500 animate-pulse' : 
-                                storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
-                              }`}></div>
-                              <span className={`text-xs ${
-                                storyGenerationStep === 'first-story' ? 'text-blue-700' : 
-                                storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
-                              }`}>
-                                Step 1: {storyGenerationStep === 'first-story' ? 'Generating first story...' : 'First story generated ✓'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${
-                                storyGenerationStep === 'enhancing' ? 'bg-blue-500 animate-pulse' : 
-                                storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
-                              }`}></div>
-                              <span className={`text-xs ${
-                                storyGenerationStep === 'enhancing' ? 'text-blue-700' : 
-                                storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
-                              }`}>
-                                Step 2: {storyGenerationStep === 'enhancing' ? 'Enhancing story with more detail...' : 
-                                storyGenerationStep === 'complete' ? 'Story enhancement complete ✓' : 'Waiting for first story...'}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* Progress indicator */}
-                          {storyGenerationStep === 'complete' && (
-                            <div className="mt-2 pt-2 border-t border-blue-200">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                <span className="text-xs text-green-700 font-medium">Both steps completed successfully!</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {/* Story Preview */}
-                      {generatedStory && !isGeneratingStory && (
-                        <div className="mt-4 space-y-4">
-                          {/* Enhanced Story (Final Result) */}
-                          <div className="p-4 bg-blue-50 rounded-lg border">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-semibold text-blue-900">
-                                📖 Enhanced Story (Final)
-                              </h4>
-                              <Badge variant="outline" className="text-xs">2-Step Process</Badge>
-                            </div>
-                            <h5 className="text-sm font-medium text-blue-800 mb-2">
+                      {!isEditingStory ? (
+                        /* Enhanced Story (Final Result) - Read Only */
+                        <div className="space-y-3">
+                          <div>
+                            <h5 className="text-sm font-medium text-green-900 mb-1">
                               {generatedStory.enhancedStory.title}
                             </h5>
-                            <p className="text-sm text-blue-800 mb-3">
+                            <p className="text-sm text-green-800 mb-2">
                               {generatedStory.enhancedStory.overallStory}
                             </p>
-                            <div className="space-y-2">
-                              <h6 className="text-sm font-medium text-blue-900">Enhanced Scene Breakdown:</h6>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <h6 className="text-sm font-medium text-green-900">Scene Breakdown:</h6>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
                               {generatedStory.enhancedStory.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string }, index: number) => (
-                                <div key={index} className="text-xs text-blue-700 bg-white p-2 rounded">
+                                <div key={index} className="text-xs text-green-700 bg-white p-2 rounded border border-green-200">
                                   <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
                                 </div>
                               ))}
                             </div>
                           </div>
-
-                          {/* Original Story (First Generation) - Collapsible */}
-                          {/* <details className="p-3 bg-gray-50 rounded-lg border">
-                            <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
-                              📝 Original Story (Step 1) - Click to expand
-                            </summary>
-                            <div className="mt-3 space-y-2">
-                              <h5 className="text-sm font-medium text-gray-800">
-                                {generatedStory.firstStory.title}
-                              </h5>
-                              <p className="text-sm text-gray-700 mb-3">
-                                {generatedStory.firstStory.overallStory}
-                              </p>
-                              <div className="space-y-2">
-                                <h6 className="text-sm font-medium text-gray-800">Original Scene Breakdown:</h6>
-                                {generatedStory.firstStory.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string }, index: number) => (
-                                  <div key={index} className="text-xs text-gray-600 bg-white p-2 rounded">
-                                    <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </details> */}
                         </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={generateFrames}
-                        disabled={!selectedImage || !prompt || !generatedStory || currentStep === "generating-frames"}
-                        className="flex-1"
-                      >
-                        {currentStep === "generating-frames" ? (
-                          <>
-                            <Wand2 className="h-4 w-4 mr-2 animate-spin" />
-                            Generating Frames...
-                          </>
-                        ) : !generatedStory ? (
-                          <>
-                            <Grid3X3 className="h-4 w-4 mr-2" />
-                            Generate Story First
-                          </>
-                        ) : (
-                          <>
-                            <Grid3X3 className="h-4 w-4 mr-2" />
-                            Generate Frames
-                          </>
-                        )}
-                      </Button>
-                      
-                      {currentStep === "generating-frames" && (
-                        <Button
-                          onClick={stopGeneration}
-                          variant="outline"
-                          className="px-4"
-                        >
-                          Stop
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Grid3X3 className="h-5 w-5" />
-                      Frame Generation Progress
-                    </CardTitle>
-                    <CardDescription>Individual frames are being generated from your prompt</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {currentStep === "generating-frames" ? (
-                      <div className="space-y-4">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-blue-600 mb-2">
-                            {Math.round(frameGenerationProgress)}%
+                      ) : (
+                        /* Enhanced Story (Final Result) - Editable */
+                        <div className="space-y-3">
+                          <div>
+                            <Label htmlFor="story-title" className="text-sm font-medium text-green-900">Story Title:</Label>
+                            <Textarea
+                              id="story-title"
+                              value={generatedStory.enhancedStory.title}
+                              onChange={(e) => {
+                                setGeneratedStory({
+                                  ...generatedStory,
+                                  enhancedStory: {
+                                    ...generatedStory.enhancedStory,
+                                    title: e.target.value
+                                  }
+                                })
+                              }}
+                              className="mt-1 text-sm min-h-[60px]"
+                              placeholder="Enter story title..."
+                            />
                           </div>
-                          <Progress value={frameGenerationProgress} className="w-full" />
-                          <p className="text-sm text-gray-600 mt-2">
-                            Generating frames concurrently... {Object.keys(frameProgress).length} of {frameCount} completed
-                          </p>
                           
-                          {/* Skeleton loading animation for progress */}
-                          {frameGenerationProgress < 100 && (
-                            <div className="mt-4 space-y-2">
-                              <div className="flex items-center justify-center space-x-2">
-                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                              </div>
-                              <p className="text-xs text-gray-500">Processing frames...</p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Individual Frame Progress */}
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium">Frame Progress:</h4>
-                          <div className={`grid gap-2 ${frameCount <= 6 ? 'grid-cols-6' : frameCount <= 8 ? 'grid-cols-8' : 'grid-cols-10'}`}>
-                            {Array.from({ length: frameCount }, (_, i) => (
-                              <div key={i} className="text-center">
-                                {frameProgress[i] ? (
-                                  // Completed frame
-                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-green-100 text-green-600">
-                                    ✓
-                                  </div>
-                                ) : (
-                                  // Loading skeleton for incomplete frames
-                                  <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex items-center justify-center">
-                                    <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
-                                  </div>
-                                )}
-                                <p className="text-xs text-gray-500 mt-1">Frame {i + 1}</p>
-                              </div>
-                            ))}
+                          <div>
+                            <Label htmlFor="story-overview" className="text-sm font-medium text-green-900">Story Overview:</Label>
+                            <Textarea
+                              id="story-overview"
+                              value={generatedStory.enhancedStory.overallStory}
+                              onChange={(e) => {
+                                setGeneratedStory({
+                                  ...generatedStory,
+                                  enhancedStory: {
+                                    ...generatedStory.enhancedStory,
+                                    overallStory: e.target.value
+                                  }
+                                })
+                              }}
+                              className="mt-1 text-sm min-h-[80px]"
+                              placeholder="Enter story overview..."
+                            />
                           </div>
-                        </div>
-
-                        {/* Generated Frames - Only show completed frames */}
-                        {generatedFrames.length > 0 && (
+                          
                           <div className="space-y-2">
-                            <h4 className="text-sm font-medium">Generated Frames ({generatedFrames.length} of {frameCount}):</h4>
-                            <div className="grid grid-cols-4 gap-2">
-                              {generatedFrames.map((frame, index) => (
-                                <div key={frame.id} className="aspect-square bg-gray-100 rounded border overflow-hidden relative flex items-center justify-center">
-                                                                  <Image
-                                  src={frame.imageUrl || "/placeholder.svg"}
-                                  alt={`Frame ${index + 1}`}
-                                  width={100}
-                                  height={100}
-                                  className="max-w-full max-h-full object-contain"
-                                  onLoad={() => console.log(`Thumbnail ${index + 1} loaded`)}
-                                  onError={() => {
-                                    console.error(`Error loading thumbnail ${index + 1}`)
-                                  }}
-                                />
+                            <h6 className="text-sm font-medium text-green-900">Scene Breakdown:</h6>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {generatedStory.enhancedStory.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string }, index: number) => (
+                                <div key={index} className="p-2 bg-white rounded border border-green-200">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-medium text-green-700">Scene {scene.sceneNumber}</span>
+                                    <input
+                                      type="text"
+                                      value={scene.timeframe}
+                                      onChange={(e) => {
+                                        const updatedScenes = [...generatedStory.enhancedStory.scenes]
+                                        updatedScenes[index] = {
+                                          ...updatedScenes[index],
+                                          timeframe: e.target.value
+                                        }
+                                        setGeneratedStory({
+                                          ...generatedStory,
+                                          enhancedStory: {
+                                            ...generatedStory.enhancedStory,
+                                            scenes: updatedScenes
+                                          }
+                                        })
+                                      }}
+                                      className="text-xs px-2 py-1 border border-gray-300 rounded w-20"
+                                      placeholder="0:00"
+                                    />
+                                  </div>
+                                  <Textarea
+                                    value={scene.description}
+                                    onChange={(e) => {
+                                      const updatedScenes = [...generatedStory.enhancedStory.scenes]
+                                      updatedScenes[index] = {
+                                        ...updatedScenes[index],
+                                        description: e.target.value
+                                      }
+                                      setGeneratedStory({
+                                        ...generatedStory,
+                                        enhancedStory: {
+                                          ...generatedStory.enhancedStory,
+                                          scenes: updatedScenes
+                                        }
+                                      })
+                                    }}
+                                    className="text-xs min-h-[60px]"
+                                    placeholder="Enter scene description..."
+                                  />
                                 </div>
                               ))}
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="aspect-video bg-gray-50 rounded-lg flex items-center justify-center">
-                        <div className="text-center space-y-2">
-                          <Grid3X3 className="h-12 w-12 mx-auto text-gray-300" />
-                          <p className="text-sm text-gray-500">Upload an image and enter a prompt to generate frames</p>
+                          
+                          {/* Edit Actions */}
+                          <div className="flex gap-2 pt-2 border-t border-green-200">
+                            <Button
+                              onClick={saveStoryChanges}
+                              size="sm"
+                              className="flex-1"
+                            >
+                              Save Changes
+                            </Button>
+                            <Button
+                              onClick={cancelStoryEdit}
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* Step 2: Frame Review and Video Generation */}
-            {(currentStep === "frames-ready" ||
-              currentStep === "generating-video" ||
-              currentStep === "video-ready") && (
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Grid3X3 className="h-5 w-5" />
-                      Step 2: Review Generated Frames
-                    </CardTitle>
-                    <CardDescription>
-                      Review your generated frames and proceed to create the final video
-                    </CardDescription>
-                    
-                    {/* Style and Mood Summary */}
-                    <div className="flex items-center gap-4 mt-2">
-                      <div className="flex items-center gap-2">
-                        <Palette className="h-4 w-4 text-blue-600" />
-                        <Badge variant="secondary" className="text-xs">
-                          Style: {selectedStyle}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Heart className="h-4 w-4 text-pink-600" />
-                        <Badge variant="secondary" className="text-xs">
-                          Mood: {selectedMood}
-                        </Badge>
-                      </div>
+                      )}
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <FrameViewer frames={generatedFrames} />
-
-                    <div className="flex gap-4 mt-6">
-                      <Button
-                        onClick={regenerateFrames}
-                        variant="outline"
-                        disabled={currentStep === "generating-video"}
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Modify Prompt & Regenerate
-                      </Button>
-
-                      {currentStep === "frames-ready" && (
+                  )}
+                  
+                  {/* Story Generator Button */}
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      onClick={generateStory}
+                      disabled={!prompt || isGeneratingStory || currentStep === "generating-frames"}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {isGeneratingStory ? (
                         <>
-                          <Button 
-                            onClick={saveAllImages}
-                            variant="outline"
-                            className="flex items-center gap-2"
-                          >
-                            <Download className="h-4 w-4" />
-                            Save All Images
-                          </Button>
-                          <Button onClick={generateVideo} className="flex-1">
-                            <Video className="h-4 w-4 mr-2" />
-                            Generate Video from Frames
-                          </Button>
+                          <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating Story...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-4 w-4 mr-2" />
+                          Generate Story
                         </>
                       )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Video Generation Progress */}
-                {currentStep === "generating-video" && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Video className="h-5 w-5" />
-                        Video Generation Progress
-                      </CardTitle>
-                      <CardDescription>Creating video clips using Runway API</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-blue-600 mb-2">
-                            {Math.round(videoGenerationProgress)}%
-                          </div>
-                          <Progress value={videoGenerationProgress} className="w-full" />
-                          <p className="text-sm text-gray-600 mt-2">
-                            {videoGenerationProgress >= 95 
-                              ? "Merging video clips into final video..."
-                              : `Generating video clips... ${Math.floor(videoGenerationProgress / (100 / (generatedFrames.length - 1))) + 1} of ${generatedFrames.length - 1} clips`
-                            }
-                          </p>
-                          
-                          {/* Skeleton loading animation for progress */}
-                          {videoGenerationProgress < 100 && (
-                            <div className="mt-4 space-y-2">
-                              <div className="flex items-center justify-center space-x-2">
-                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                                <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                              </div>
-                              <p className="text-xs text-gray-500">Processing with Runway API...</p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Individual Clip Progress */}
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium">Clip Progress:</h4>
-                          <div className="grid grid-cols-5 gap-2">
-                            {Array.from({ length: generatedFrames.length - 1 }, (_, i) => (
-                              <div key={i} className="text-center">
-                                {videoGenerationProgress >= ((i + 1) / (generatedFrames.length - 1)) * 100 ? (
-                                  // Completed clip
-                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-green-100 text-green-600">
-                                    ✓
-                                  </div>
-                                ) : (
-                                  // Loading skeleton for incomplete clips
-                                  <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex items-center justify-center">
-                                    <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
-                                  </div>
-                                )}
-                                <p className="text-xs text-gray-500 mt-1">Clip {i + 1}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Stop Button */}
-                        <div className="flex justify-center">
-                          <Button
-                            onClick={stopGeneration}
-                            variant="outline"
-                            className="px-6"
-                          >
-                            Stop Video Generation
-                          </Button>
-                        </div>
+                    </Button>
+                  </div>
+                  
+                  {/* Story Generation Status */}
+                  {isGeneratingStory && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm font-medium text-blue-800">Story Generation in Progress</span>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Final Video Result */}
-                {currentStep === "video-ready" && generatedVideo && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Play className="h-5 w-5" />
-                        Generated Video
-                      </CardTitle>
-                      <CardDescription>Your personalized animated video is ready!</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-                        <div className="text-center space-y-2">
-                          <Video className="h-12 w-12 mx-auto text-gray-400" />
-                          <p className="text-sm text-gray-600">Final Merged Video</p>
-                          <p className="text-xs text-gray-500">Duration: {generatedVideo.duration}</p>
-                          <p className="text-xs text-gray-500">
-                            {generatedVideo.videoClips?.length || 0} clips merged
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(generatedVideo.videoUrl, '_blank')}
-                            className="mt-2"
-                          >
-                            <Play className="h-3 w-3 mr-1" />
-                            Play Final Video
-                          </Button>
+                      
+                      {/* Progress Bar */}
+                      <div className="mb-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-blue-700">Progress</span>
+                          <span className="text-xs font-medium text-blue-700">{Math.round(storyGenerationProgress)}%</span>
                         </div>
+                        <Progress value={storyGenerationProgress} className="w-full h-2" />
                       </div>
-
-                      {/* Video Clips Information */}
-                      {generatedVideo.videoClips && generatedVideo.videoClips.length > 0 && (
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-medium">Generated Video Clips:</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {generatedVideo.videoClips.map((clipUrl, index) => (
-                              <div key={index} className="border rounded-lg p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm font-medium">Clip {index + 1}</span>
-                                  <Badge variant="outline" className="text-xs">5s</Badge>
-                                </div>
-                                <p className="text-xs text-gray-600 mb-2">
-                                  {generatedFrames[index]?.timestamp} → {generatedFrames[index + 1]?.timestamp}
-                                </p>
-                                {/* Show story prompt for this clip */}
-                                {generatedStory && generatedStory.enhancedStory.scenes[index] && (
-                                  <div className="mb-2 p-2 bg-blue-50 rounded text-xs text-blue-800">
-                                    <strong>Scene {index + 1}:</strong> {generatedStory.enhancedStory.scenes[index].description}
-                                  </div>
-                                )}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => window.open(clipUrl, '_blank')}
-                                  className="w-full"
-                                >
-                                  <Play className="h-3 w-3 mr-1" />
-                                  View Clip
-                                </Button>
-                              </div>
-                            ))}
+                      
+                      {/* <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            storyGenerationStep === 'first-story' ? 'bg-blue-500 animate-pulse' : 
+                            storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
+                          }`}></div>
+                          <span className={`text-xs ${
+                            storyGenerationStep === 'first-story' ? 'text-blue-700' : 
+                            storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
+                          }`}>
+                            Step 1: {storyGenerationStep === 'first-story' ? 'Generating first story...' : 'First story generated ✓'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            storyGenerationStep === 'enhancing' ? 'bg-blue-500 animate-pulse' : 
+                            storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
+                          }`}></div>
+                          <span className={`text-xs ${
+                            storyGenerationStep === 'enhancing' ? 'text-blue-700' : 
+                            storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
+                          }`}>
+                            Step 2: {storyGenerationStep === 'enhancing' ? 'Enhancing story with more detail...' : 
+                            storyGenerationStep === 'complete' ? 'Story enhancement complete ✓' : 'Waiting for first story...'}
+                          </span>
+                        </div>
+                      </div> */}
+                      
+                      {/* Progress indicator */}
+                      {storyGenerationStep === 'complete' && (
+                        <div className="mt-2 pt-2 border-t border-blue-200">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <span className="text-xs text-green-700 font-medium">Both steps completed successfully!</span>
                           </div>
                         </div>
                       )}
-
-                      <div className="flex gap-4">
-                        <Button className="flex-1">
-                          <Download className="h-4 w-4 mr-2" />
-                          Download MP4
-                        </Button>
-                        <Button variant="outline" onClick={resetGeneration}>
-                          Create New Video
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            )}
-          </TabsContent>
-
-
-
-          <TabsContent value="documentation" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* How It Works */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Wand2 className="h-5 w-5" />
-                    How It Works
-                  </CardTitle>
-                  <CardDescription>Understanding the AI video generation process</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-sm font-medium flex-shrink-0 mt-0.5">
-                        1
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm">Story Generation</h4>
-                        <p className="text-xs text-gray-600">AI analyzes your prompt and creates a detailed story with scene breakdowns</p>
-                      </div>
                     </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-sm font-medium flex-shrink-0 mt-0.5">
-                        2
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm">Frame Creation</h4>
-                        <p className="text-xs text-gray-600">Generate 6 key frames using your photo and story-enhanced prompts</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-sm font-medium flex-shrink-0 mt-0.5">
-                        3
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-sm">Video Compilation</h4>
-                        <p className="text-xs text-gray-600">Transform frames into smooth video with transitions and effects</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Best Practices */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Video className="h-5 w-5" />
-                    Best Practices
-                  </CardTitle>
-                  <CardDescription>Tips for optimal video generation</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                      <p className="text-xs text-gray-700">Use clear, descriptive prompts with specific actions</p>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                      <p className="text-xs text-gray-700">Upload high-quality photos with good lighting</p>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                      <p className="text-xs text-gray-700">Include scene context and character emotions</p>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                      <p className="text-xs text-gray-700">Review frames before video generation</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Technical Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Technical Architecture</CardTitle>
-                <CardDescription>Advanced implementation details and system components</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-blue-600">Story Enhancement</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">GPT-4</Badge>
-                        <span className="text-gray-600">Initial story generation</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">Claude</Badge>
-                        <span className="text-gray-600">Story enhancement</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">Custom NLP</Badge>
-                        <span className="text-gray-600">Scene breakdown</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-green-600">Image Generation</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">Stable Diffusion</Badge>
-                        <span className="text-gray-600">Frame generation</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">ControlNet</Badge>
-                        <span className="text-gray-600">Character consistency</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">LoRA</Badge>
-                        <span className="text-gray-600">Style adaptation</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-purple-600">Video Processing</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">FFmpeg</Badge>
-                        <span className="text-gray-600">Video compilation</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">OpenCV</Badge>
-                        <span className="text-gray-600">Frame analysis</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">WebM</Badge>
-                        <span className="text-gray-600">Output format</span>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-3">Performance Optimization</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-lg font-bold text-blue-600">6</div>
-                      <div className="text-xs text-gray-600">Frames</div>
-                    </div>
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-lg font-bold text-green-600">~30s</div>
-                      <div className="text-xs text-gray-600">Generation</div>
-                    </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <div className="text-lg font-bold text-purple-600">1080p</div>
-                      <div className="text-xs text-gray-600">Resolution</div>
-                    </div>
-                    <div className="text-center p-3 bg-orange-50 rounded-lg">
-                      <div className="text-lg font-bold text-orange-600">30fps</div>
-                      <div className="text-xs text-gray-600">Frame Rate</div>
-                    </div>
-                  </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={generateFrames}
+                    disabled={!selectedImage || !prompt || !generatedStory || currentStep === "generating-frames"}
+                    className="flex-1"
+                  >
+                    {currentStep === "generating-frames" ? (
+                      <>
+                        <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating Frames...
+                      </>
+                    ) : !generatedStory ? (
+                      <>
+                        <Grid3X3 className="h-4 w-4 mr-2" />
+                        Generate Story First
+                      </>
+                    ) : (
+                      <>
+                        <Grid3X3 className="h-4 w-4 mr-2" />
+                        Generate Frames
+                      </>
+                    )}
+                  </Button>
+                  
+                  {currentStep === "generating-frames" && (
+                    <Button
+                      onClick={stopGeneration}
+                      variant="outline"
+                      className="px-4"
+                    >
+                      Stop
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Grid3X3 className="h-5 w-5" />
+                  Frame Generation Progress
+                </CardTitle>
+                <CardDescription>Individual frames are being generated from your prompt</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {currentStep === "generating-frames" ? (
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600 mb-2">
+                        {Math.round(frameGenerationProgress)}%
+                      </div>
+                      <Progress value={frameGenerationProgress} className="w-full" />
+                      <p className="text-sm text-gray-600 mt-2">
+                        Generating frames concurrently... {Object.keys(frameProgress).length} of {frameCount} completed
+                      </p>
+                      
+                      {/* Skeleton loading animation for progress */}
+                      {frameGenerationProgress < 100 && (
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center justify-center space-x-2">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                          </div>
+                          <p className="text-xs text-gray-500">Processing frames...</p>
+                        </div>
+                      )}
+                    </div>
 
-          </TabsContent>
-        </Tabs>
+                    {/* Individual Frame Progress */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Frame Progress:</h4>
+                      <div className={`grid gap-2 ${frameCount <= 6 ? 'grid-cols-6' : frameCount <= 8 ? 'grid-cols-8' : 'grid-cols-10'}`}>
+                        {Array.from({ length: frameCount }, (_, i) => (
+                          <div key={i} className="text-center">
+                            {frameProgress[i] ? (
+                              // Completed frame
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-green-100 text-green-600">
+                                ✓
+                              </div>
+                            ) : (
+                              // Loading skeleton for incomplete frames
+                              <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex items-center justify-center">
+                                <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
+                              </div>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">Frame {i + 1}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Generated Frames - Only show completed frames */}
+                    {generatedFrames.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Generated Frames ({generatedFrames.length} of {frameCount}):</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          {generatedFrames.map((frame, index) => (
+                            <div key={frame.id} className="aspect-square bg-gray-100 rounded border overflow-hidden relative flex items-center justify-center">
+                              <Image
+                                src={frame.imageUrl || "/placeholder.svg"}
+                                alt={`Frame ${index + 1}`}
+                                width={100}
+                                height={100}
+                                className="max-w-full max-h-full object-contain"
+                                onLoad={() => console.log(`Thumbnail ${index + 1} loaded`)}
+                                onError={() => {
+                                  console.error(`Error loading thumbnail ${index + 1}`)
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : currentStep === "frames-ready" ? (
+                  <div className="space-y-4">
+                    <FrameViewer frames={generatedFrames} />
+                    
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex gap-2">
+                        {/* <Button
+                          onClick={modifyStory}
+                          variant="outline"
+                          size="sm"
+                          disabled={!generatedStory}
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Modify Story
+                        </Button> */}
+                        <Button 
+                          onClick={saveAllImages}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Save Images
+                        </Button>
+                      </div>
+                      <Link href="/video-generation" className="flex-1">
+                        <Button className="w-full">
+                          <ArrowRight className="h-4 w-4 mr-2" />
+                          Continue to Video Generation
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="aspect-video bg-gray-50 rounded-lg flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <Grid3X3 className="h-12 w-12 mx-auto text-gray-300" />
+                      <p className="text-sm text-gray-500">Upload an image and enter a prompt to generate frames</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   )
