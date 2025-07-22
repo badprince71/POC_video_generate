@@ -56,6 +56,14 @@ export async function POST(request: NextRequest) {
                     role: "system",
                     content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to transform a user prompt into a rich, engaging video story with ${frameCount} distinct scenes (${Math.floor(30/frameCount)} seconds each).
 
+CRITICAL SAFETY REQUIREMENTS:
+1. **CONTENT SAFETY**: Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.
+2. **NO HARMFUL CONTENT**: Do not generate descriptions involving violence, weapons, dangerous activities, harmful substances, or any content that could cause harm.
+3. **NO INAPPROPRIATE CONTENT**: Avoid any sexual content, nudity, or inappropriate behavior. Keep all content professional and suitable for work environments.
+4. **NO OFFENSIVE LANGUAGE**: Do not use profanity, hate speech, or offensive terms. Use clean, professional language.
+5. **NO ILLEGAL ACTIVITIES**: Do not describe any illegal activities, criminal behavior, or activities that could be considered unlawful.
+6. **RESPECTFUL CONTENT**: Ensure all content is respectful to all individuals, cultures, and communities.
+
 CRITICAL REQUIREMENTS:
 1. **STRICT PROMPT ADHERENCE**: Every scene MUST directly incorporate the core elements, theme, and scenario from the original user prompt. Do not deviate from what the user specifically requested.
 2. **SCENE CONSISTENCY**: All ${frameCount} scenes should be variations and progressions of the SAME core scenario described in the original prompt.
@@ -84,6 +92,7 @@ The story should be:
 - Authentic and relatable human moments
 - Directly connected to and expanding upon the original user prompt
 - Appearance-neutral, focusing on actions and emotions rather than specific clothing/accessories
+- Family-friendly and appropriate for all audiences
 
 IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. Do not wrap your response in \`\`\`json or \`\`\` blocks.
 
@@ -112,6 +121,15 @@ Format your response as pure JSON with this structure:
                     content: `Create an EXTREMELY DETAILED and immersive photo story from this prompt: "${prompt}". 
 
 ORIGINAL USER REQUEST: "${prompt}"
+
+SAFETY REQUIREMENTS:
+- Generate ONLY family-friendly, appropriate content suitable for all audiences
+- Avoid any content that could be considered harmful, violent, inappropriate, or offensive
+- Do not describe violence, weapons, dangerous activities, or harmful substances
+- Avoid any sexual content, nudity, or inappropriate behavior
+- Use clean, professional language without profanity or offensive terms
+- Do not describe any illegal activities or criminal behavior
+- Ensure all content is respectful to all individuals, cultures, and communities
 
 CRITICAL INSTRUCTIONS:
 1. **EXACT PROMPT IMPLEMENTATION**: Every scene MUST directly implement the exact scenario, objects, actions, and setting described in the original prompt.
@@ -142,6 +160,7 @@ Make each scene feel like a professional film still with:
 - Detailed descriptions that capture every visual element
 - Direct implementation of the original user prompt
 - Appearance-neutral descriptions focusing on actions and emotions
+- Family-friendly and appropriate content for all audiences
 
 The story should have a complete narrative arc with setup, development, climax, and resolution, all based on the original user's vision: "${prompt}". Each scene should be so detailed that a professional photographer could immediately understand exactly how to capture it, while staying 100% true to the original user's request and avoiding any specific appearance details that might not match the user's actual photo.`
                 }
@@ -177,6 +196,14 @@ The story should have a complete narrative arc with setup, development, climax, 
                     role: "system",
                     content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to take an existing story and enhance it with even more detail, depth, and cinematic quality for a video with ${frameCount} distinct scenes (${Math.floor(30/frameCount)} seconds each).
 
+CRITICAL SAFETY REQUIREMENTS:
+1. **CONTENT SAFETY**: Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.
+2. **NO HARMFUL CONTENT**: Do not generate descriptions involving violence, weapons, dangerous activities, harmful substances, or any content that could cause harm.
+3. **NO INAPPROPRIATE CONTENT**: Avoid any sexual content, nudity, or inappropriate behavior. Keep all content professional and suitable for work environments.
+4. **NO OFFENSIVE LANGUAGE**: Do not use profanity, hate speech, or offensive terms. Use clean, professional language.
+5. **NO ILLEGAL ACTIVITIES**: Do not describe any illegal activities, criminal behavior, or activities that could be considered unlawful.
+6. **RESPECTFUL CONTENT**: Ensure all content is respectful to all individuals, cultures, and communities.
+
 CRITICAL REQUIREMENTS:
 1. **ENHANCE THE EXISTING STORY**: Use the provided first story as your foundation and enhance it with more detail, emotional depth, and cinematic elements.
 2. **MAINTAIN CORE ELEMENTS**: Keep all the core elements, theme, and scenario from the original user prompt and first story.
@@ -203,6 +230,7 @@ The enhanced story should be:
 - More authentic and emotionally engaging human moments
 - More directly connected to and expanding upon the original user prompt
 - More appearance-neutral, focusing on actions and emotions
+- Family-friendly and appropriate for all audiences
 
 IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. Do not wrap your response in \`\`\`json or \`\`\` blocks.
 
@@ -235,6 +263,15 @@ ORIGINAL USER PROMPT: "${prompt}"
 FIRST GENERATED STORY:
 ${JSON.stringify(firstStoryData, null, 2)}
 
+SAFETY REQUIREMENTS:
+- Generate ONLY family-friendly, appropriate content suitable for all audiences
+- Avoid any content that could be considered harmful, violent, inappropriate, or offensive
+- Do not describe violence, weapons, dangerous activities, or harmful substances
+- Avoid any sexual content, nudity, or inappropriate behavior
+- Use clean, professional language without profanity or offensive terms
+- Do not describe any illegal activities or criminal behavior
+- Ensure all content is respectful to all individuals, cultures, and communities
+
 CRITICAL INSTRUCTIONS:
 1. **ENHANCE THE EXISTING STORY**: Use the first story as your foundation and make it even more detailed and cinematic.
 2. **MAINTAIN CORE ELEMENTS**: Keep all the core elements, theme, and scenario from the original user prompt and first story.
@@ -264,6 +301,7 @@ Make each enhanced scene feel like a professional film still with:
 - More detailed descriptions that capture every visual element
 - Direct implementation of the original user prompt with enhanced detail
 - More appearance-neutral descriptions focusing on actions and emotions
+- Family-friendly and appropriate content for all audiences
 
 The enhanced story should have an even more complete narrative arc with enhanced setup, development, climax, and resolution, all based on the original user's vision: "${prompt}". Each enhanced scene should be so detailed that a professional cinematographer could immediately understand exactly how to capture it, while staying 100% true to the original user's request and avoiding any specific appearance details that might not match the user's actual photo.`
                 }
@@ -332,7 +370,7 @@ Original Prompt Connection: ${originalPromptConnection}
             return {
                 frameNumber: index + 1,
                 timeframe: scene.timeframe,
-                prompt: `${fullStoryContext}. Create a cinematic, professional photograph with rich details, perfect lighting, vibrant colors, and authentic human expressions. Make it visually stunning and emotionally engaging. This scene should directly fulfill the original user request: "${prompt}". The image should capture the complete story context and scene details provided above.`
+                prompt: `${fullStoryContext}. Create a cinematic, professional photograph with rich details, perfect lighting, vibrant colors, and authentic human expressions. Make it visually stunning and emotionally engaging. This scene should directly fulfill the original user request: "${prompt}". The image should capture the complete story context and scene details provided above. IMPORTANT: Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.`
             };
         });
 
