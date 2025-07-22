@@ -14,12 +14,10 @@ import {
   Upload,
   Video,
   Wand2,
-  Play,
   Download,
   Grid3X3,
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
   ArrowRight,
   Palette,
   Heart,
@@ -27,7 +25,6 @@ import {
   Home,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 
 interface VideoFrame {
@@ -38,15 +35,7 @@ interface VideoFrame {
   prompt: string
 }
 
-interface GeneratedVideo {
-  id: string
-  title: string
-  duration: string
-  prompt: string
-  frames: VideoFrame[]
-  videoUrl: string
-  videoClips?: string[] // Array of individual video clip URLs
-}
+
 
 type GenerationStep = "input" | "generating-frames" | "frames-ready"
 
@@ -353,22 +342,7 @@ export default function FrameGenerationPage() {
     return descriptions[frameIndex] || `Frame ${frameIndex + 1} content`
   }
 
-  const resetGeneration = () => {
-    setCurrentStep("input")
-    setGeneratedFrames([])
-    setFrameGenerationProgress(0)
-    setSelectedFrameIndex(0)
-    setIsGenerationStopped(false)
-    setGeneratedStory(null)
-    setIsGeneratingStory(false)
-    setStoryGenerationStep('idle')
-    setStoryGenerationProgress(0)
-    setFrameProgress({})
-    setSelectedStyle("Realistic")
-    setSelectedMood("Vibrant")
-    setVideoDuration(30)
-    setFrameCount(6)
-  }
+
 
   const saveAllImages = async () => {
     if (generatedFrames.length === 0) return
@@ -402,24 +376,7 @@ export default function FrameGenerationPage() {
     }
   }
 
-  const regenerateFrames = () => {
-    // Stop any ongoing generation and return to input step
-    setCurrentStep("input")
-    setGeneratedFrames([])
-    setFrameGenerationProgress(0)
-    setSelectedFrameIndex(0)
-    setIsGenerationStopped(false)
-    setFrameProgress({})
-    setSelectedStyle("Realistic")
-    setSelectedMood("Vibrant")
-    setVideoDuration(30)
-    setFrameCount(6)
-    setGeneratedStory(null)
-    setIsGeneratingStory(false)
-    setStoryGenerationStep('idle')
-    setStoryGenerationProgress(0)
-    setIsEditingStory(false)
-  }
+
 
   const modifyStory = () => {
     setIsEditingStory(true)
