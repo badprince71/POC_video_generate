@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         const styleMoodSuffix = style && mood ? `, ${style.toLowerCase()} style, ${mood.toLowerCase()} mood` : '';
 
         let response;
-        const retries = 4;
+        const retries = 2;
         let lastError;
         // Convert base64 to buffer for image editing
         const imageBuffer = Buffer.from(image, 'base64');
