@@ -12,7 +12,7 @@ function formatImageData(base64Data: string): string {
 
 export async function POST(request: NextRequest) {
     try {
-        const { image, prompt, frameIndex, totalFrames, isFirstFrame } = await request.json();
+        const { image, prompt, frameIndex, totalFrames, isFirstFrame, style, mood } = await request.json();
         
         // Validation
         if (!prompt) {
@@ -30,8 +30,11 @@ export async function POST(request: NextRequest) {
 
         console.log(`Generating frame ${frameIndex + 1}/${totalFrames} with prompt: "${prompt}"`);
 
-        // Create frame-specific prompt
+        // Create frame-specific prompt with style and mood
         let framePrompt: string;
+        
+        // Add style and mood to the prompt if provided
+        const styleMoodSuffix = style && mood ? `, ${style.toLowerCase()} style, ${mood.toLowerCase()} mood` : '';
 
         let response;
         const retries = 2;
@@ -44,10 +47,10 @@ export async function POST(request: NextRequest) {
             try {
                 if (isFirstFrame) {
                     // First scene: create a realistic photograph from original image
-                    framePrompt = `Create a realistic, high-quality photograph. Maintain their identical facial features, face shape, eye color, hair style, and all distinctive characteristics. ${prompt}. Make it look like a real photo taken with a professional camera - natural lighting, realistic colors, authentic expressions. Use photorealistic style with natural skin tones, realistic shadows, and authentic environmental details. MAINTAIN IDENTICAL FACIAL FEATURES from the original image - same face shape, same eyes, same nose, same mouth, same hair. This should be a complete scene, not a frame from a video. Only change the setting and pose.`;
+                    framePrompt = `Create a ${styleMoodSuffix}, high-quality photograph. Maintain their identical facial features, face shape, eye color, hair style, and all distinctive characteristics. ${prompt}. Make it look like a real photo taken with a professional camera - natural lighting, realistic colors, authentic expressions. Use photorealistic style with natural skin tones, realistic shadows, and authentic environmental details. MAINTAIN IDENTICAL FACIAL FEATURES from the original image - same face shape, same eyes, same nose, same mouth, same hair. This should be a complete scene, not a frame from a video. Only change the setting and pose.`;
                 } else {
                     // Subsequent scenes: create new realistic photographs from original image
-                    framePrompt = `Create a realistic, high-quality photograph. Maintain their identical facial features, face shape, eye color, hair style, and all distinctive characteristics. ${prompt}. Make it look like a real photo taken with a professional camera - natural lighting, realistic colors, authentic expressions. Use photorealistic style with natural skin tones, realistic shadows, and authentic environmental details. MAINTAIN IDENTICAL FACIAL FEATURES from the original image - same face shape, same eyes, same nose, same mouth, same hair. This should be a complete scene, not a frame from a video. Only change the setting and pose.`;
+                    framePrompt = `Create a ${styleMoodSuffix}, high-quality photograph. Maintain their identical facial features, face shape, eye color, hair style, and all distinctive characteristics. ${prompt}. Make it look like a real photo taken with a professional camera - natural lighting, realistic colors, authentic expressions. Use photorealistic style with natural skin tones, realistic shadows, and authentic environmental details. MAINTAIN IDENTICAL FACIAL FEATURES from the original image - same face shape, same eyes, same nose, same mouth, same hair. This should be a complete scene, not a frame from a video. Only change the setting and pose.`;
                 }
                 
                 response = await openai.images.edit({
