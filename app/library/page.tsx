@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import Image from "next/image"
 import Link from "next/link"
 
 import { useState } from "react"
@@ -316,7 +315,7 @@ export default function LibraryPage() {
                   Video Details
                 </CardTitle>
                 <CardDescription>
-                  Detailed information about "{selectedVideo.title}"
+                  Detailed information about &quot;{selectedVideo.title}&quot;
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">

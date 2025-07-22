@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import Image from "next/image"
 import Link from "next/link"
 
 import { useState } from "react"
@@ -14,12 +13,8 @@ import {
   Play,
   Download,
   ArrowLeft,
-  ArrowRight,
-  RefreshCw,
   Library,
   Home,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react"
 
 interface VideoFrame {
@@ -44,279 +39,22 @@ type VideoGenerationStep = "input" | "generating-video" | "video-ready"
 
 export default function VideoGenerationPage() {
   const [currentStep, setCurrentStep] = useState<VideoGenerationStep>("input")
-  const [generatedFrames, setGeneratedFrames] = useState<VideoFrame[]>([])
+  const [generatedFrames] = useState<VideoFrame[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<GeneratedVideo | null>(null)
   const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
-  const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
-  const [isGenerationStopped, setIsGenerationStopped] = useState(false)
 
-  const generateVideo = async () => {
-    if (generatedFrames.length === 0) return
-
-    setCurrentStep("generating-video")
-    setVideoGenerationProgress(0)
-    setIsGenerationStopped(false)
-
-    try {
-      const totalClips = generatedFrames.length - 1 // Number of transitions between frames
-      const generatedClips: string[] = []
-
-      // Generate video clips for each pair of consecutive frames
-      for (let i = 0; i < totalClips; i++) {
-        // Check if generation was stopped
-        if (isGenerationStopped) {
-          setCurrentStep("input")
-          return
-        }
-
-        const startImage = generatedFrames[i].imageUrl
-        const endImage = generatedFrames[i + 1].imageUrl
-        
-        console.log(`Generating video clip ${i + 1}/${totalClips} (${generatedFrames[i].timestamp} to ${generatedFrames[i + 1].timestamp})`)
-
-        // Update progress
-        setVideoGenerationProgress(((i) / totalClips) * 100)
-
-        // Call Runway API to generate video clip with retry mechanism
-        let response
-        let retryCount = 0
-        const maxRetries = 2
-        
-        while (retryCount <= maxRetries) {
-          try {
-            response = await fetch("/api/generate_video_clips", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                startImage: startImage,
-                endImage: endImage,
-                clipIndex: i,
-                totalClips: totalClips,
-                prompt: generatedFrames[i].prompt
-              }),
-            })
-            .then((res) => res.json())
-            
-            // If successful, break out of retry loop
-            if (response.videoUrl && !response.error) {
-              break
-            }
-            
-            // If it's a timeout and we have retries left, try again
-            if (response.error && (response.error.includes('timed out') || response.error.includes('408')) && retryCount < maxRetries) {
-              console.warn(`Video clip ${i + 1} timed out, retrying... (attempt ${retryCount + 1}/${maxRetries})`)
-              retryCount++
-              await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds before retry
-              continue
-            }
-            
-            break // Exit retry loop for other errors or max retries reached
-            
-          } catch (error) {
-            console.error(`Error generating video clip ${i + 1} (attempt ${retryCount + 1}):`, error)
-            if (retryCount < maxRetries) {
-              retryCount++
-              await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds before retry
-              continue
-            }
-            response = { error: "Failed to generate video clip after retries" }
-            break
-          }
-        }
-        if (response.error) {
-          console.error(`Video clip ${i + 1} generation failed:`, response.error)
-          
-          // Handle timeout specifically
-          if (response.error.includes('timed out') || response.error.includes('408')) {
-            console.warn(`Video clip ${i + 1} timed out, continuing with next clip...`)
-            // Continue with next clip instead of failing completely
-            continue
-          }
-          
-          throw new Error(`Clip ${i + 1}: ${response.error}`)
-        }
-
-        if (response.videoUrl) {
-          generatedClips.push(response.videoUrl)
-          console.log(`Video clip ${i + 1} generated successfully:`, response.videoUrl)
-        }
-
-        // Update progress after each clip (account for partial success)
-        const progressPercentage = Math.min(((i + 1) / totalClips) * 100, 90) // Cap at 90% before merging
-        setVideoGenerationProgress(progressPercentage)
-      }
-
-      // Check if generation was stopped during the process
-      if (isGenerationStopped) {
-        setCurrentStep("input")
-        return
-      }
-
-      // Check if we have any successful clips
-      if (generatedClips.length === 0) {
-        throw new Error("No video clips were generated successfully")
-      }
-
-      console.log(`Successfully generated ${generatedClips.length} out of ${totalClips} video clips`)
-
-      // Merge all video clips into a final video
-      console.log("Merging video clips into final video...")
-      setVideoGenerationProgress(95) // Show merging progress
-
-      const mergeResponse = await fetch("/api/merge_video_clips", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          videoClips: generatedClips
-        }),
-      })
-      .then((res) => res.json())
-      .catch((error) => {
-        console.error("Error merging video clips:", error)
-        return { error: "Failed to merge video clips" }
-      })
-
-      if (mergeResponse.error) {
-        console.error("Video merging failed:", mergeResponse.error)
-        throw new Error(`Video merging failed: ${mergeResponse.error}`)
-      }
-
-      setVideoGenerationProgress(100)
-
-      // Create final video object with merged video
-      const video: GeneratedVideo = {
-        id: "generated-" + Date.now(),
-        title: "Your Generated Video",
-        duration: `${totalClips * 5}s`,
-        prompt: "Generated from frames",
-        frames: generatedFrames,
-        videoUrl: mergeResponse.mergedVideoUrl || generatedClips[0] || "/placeholder-video.mp4",
-        videoClips: generatedClips // Store all clips for individual viewing
-      }
-
-      setGeneratedVideo(video)
-      setCurrentStep("video-ready")
-      console.log(`All ${totalClips} video clips generated and merged successfully!`)
-      
-      // Show success message with clip count
-      if (generatedClips.length < totalClips) {
-        console.warn(`Note: ${totalClips - generatedClips.length} clips failed to generate due to timeouts`)
-      }
-
-    } catch (error) {
-      console.error("Error during video generation:", error)
-      
-      // If generation was stopped, don't show error
-      if (!isGenerationStopped) {
-        alert(`Error generating video: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        setCurrentStep("input")
-      }
-    }
-  }
 
   const stopGeneration = () => {
-    setIsGenerationStopped(true)
-    setCurrentStep("input")
+     setCurrentStep("input")
   }
 
   const resetGeneration = () => {
     setCurrentStep("input")
     setGeneratedVideo(null)
     setVideoGenerationProgress(0)
-    setIsGenerationStopped(false)
   }
 
-  const FrameViewer = ({ frames }: { frames: VideoFrame[] }) => {
-    if (frames.length === 0) return null
 
-    return (
-      <div className="space-y-4">
-        {/* Frame Navigation */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">{frames.length} frames ready</Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedFrameIndex(Math.max(0, selectedFrameIndex - 1))}
-              disabled={selectedFrameIndex === 0}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm text-gray-600">
-              Frame {selectedFrameIndex + 1} of {frames.length}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedFrameIndex(Math.min(frames.length - 1, selectedFrameIndex + 1))}
-              disabled={selectedFrameIndex === frames.length - 1}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        {/* Selected Frame Display */}
-        <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px]">
-          <Image
-            src={frames[selectedFrameIndex]?.imageUrl || "/placeholder.svg"}
-            alt={`Frame ${selectedFrameIndex + 1}`}
-            width={400}
-            height={400}
-            className="max-w-full max-h-full object-contain"
-            onLoad={() => console.log(`Frame ${selectedFrameIndex + 1} loaded successfully`)}
-            onError={() => {
-              console.error(`Error loading frame ${selectedFrameIndex + 1}`)
-            }}
-          />
-        </div>
-
-        {/* Frame Info */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <Badge variant="outline">{frames[selectedFrameIndex]?.timestamp}</Badge>
-            <span className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</span>
-          </div>
-          <p className="text-sm text-gray-700">{frames[selectedFrameIndex]?.description}</p>
-        </div>
-
-        {/* Frame Thumbnails */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium">All Frames</h4>
-          <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-            {frames.map((frame, index) => (
-              <button
-                key={frame.id}
-                onClick={() => setSelectedFrameIndex(index)}
-                className={`aspect-square rounded border-2 overflow-hidden transition-all relative bg-gray-100 flex items-center justify-center ${
-                  selectedFrameIndex === index
-                    ? "border-blue-500 ring-2 ring-blue-200"
-                    : "border-gray-200 hover:border-gray-300"
-                }`}
-              >
-                <Image
-                  src={frame.imageUrl || "/placeholder.svg"}
-                  alt={`Frame ${index + 1}`}
-                  width={100}
-                  height={100}
-                  className="max-w-full max-h-full object-contain"
-                />
-                <div className="absolute inset-x-0 bottom-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
-                  {frame.timestamp}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
