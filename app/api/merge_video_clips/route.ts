@@ -4,6 +4,7 @@ import { existsSync } from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import ffmpeg from 'ffmpeg-static'
 
 const execAsync = promisify(exec)
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     // Create temporary directory
     const timestamp = Date.now()
-    tempDir = path.join(process.cwd(), 'temp', `merge_${timestamp}`)
+    tempDir = path.join('/tmp', 'temp', `merge_${timestamp}`)
     
     if (!existsSync(path.dirname(tempDir))) {
       await mkdir(path.dirname(tempDir), { recursive: true })
