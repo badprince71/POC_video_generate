@@ -1,145 +1,181 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-interface MergeVideoRequest {
-  videoClips: string[] // Array of video clip URLs
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { videoClips }: MergeVideoRequest = await request.json()
-    
-    // Validation
-    if (!videoClips || videoClips.length === 0) {
-      return NextResponse.json({ error: "Video clips are required" }, { status: 400 })
-    }
-
-    console.log(`Merging ${videoClips.length} video clips`)
-
-    // For development purposes, we'll simulate merging by returning the first clip
-    // In production, you would implement actual video merging using:
-    // 1. FFmpeg for local processing
-    // 2. AWS MediaConvert for cloud processing
-    // 3. A video processing service like Runway, Replicate, etc.
-    
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // For now, return the first clip as the "merged" result
-    // This allows the UI to work while you implement actual merging
-    const mergedVideoUrl = videoClips[0] || '/placeholder-video.mp4'
-    
-    console.log('Simulated video merge completed. In production, implement actual video merging.')
-    console.log('Merged video URL (simulated):', mergedVideoUrl)
-
-    return NextResponse.json({
-      mergedVideoUrl: mergedVideoUrl,
-      totalClips: videoClips.length,
-      success: true,
-      note: "This is a simulated merge. Implement actual video merging for production."
-    })
-
-  } catch (error) {
-    console.error('Error merging video clips:', error)
-    return NextResponse.json({ 
-      error: "Internal server error", 
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
-  }
-}
-
-// Production-ready implementation (commented out for development)
-/*
-import { writeFile, mkdir, readFile } from 'fs/promises'
-import { join } from 'path'
+import { writeFile, unlink, mkdir } from 'fs/promises'
+import { existsSync } from 'fs'
+import path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
+interface MergeVideosRequest {
+  videoUrls: string[]
+  outputFormat?: 'mp4' | 'webm'
+}
+
+interface MergeVideosResponse {
+  success: boolean
+  mergedVideoUrl: string
+  previewUrl: string
+  format: string
+  duration: number
+  fileSize: number
+  videoInfo: {
+    inputVideos: string[]
+    totalInputs: number
+    mergeOrder: number[]
+  }
+  error?: string
+}
+
 export async function POST(request: NextRequest) {
+  console.log("--------------merge audio api call success~~~~~~~~~~~~~~~~~~~")
+  let tempDir: string | null = null
+  let downloadedFiles: string[] = []
+  let outputFile: string | null = null
+
   try {
-    const { videoClips }: MergeVideoRequest = await request.json()
-    
-    if (!videoClips || videoClips.length === 0) {
-      return NextResponse.json({ error: "Video clips are required" }, { status: 400 })
+    const body: MergeVideosRequest = await request.json()
+    const { videoUrls, outputFormat = 'mp4' } = body
+
+    if (!videoUrls || videoUrls.length === 0) {
+      return NextResponse.json(
+        { error: 'No video URLs provided' },
+        { status: 400 }
+      )
     }
 
-    console.log(`Merging ${videoClips.length} video clips`)
+    if (videoUrls.length === 1) {
+      return NextResponse.json(
+        { error: 'At least 2 videos are required for merging' },
+        { status: 400 }
+      )
+    }
 
-    // Create temporary directory for processing
-    const tempDir = join(process.cwd(), 'temp', `merge-${Date.now()}`)
+    console.log('🎬 Starting ffmpeg video merge for:', videoUrls.length, 'videos')
+
+    // Create temporary directory
+    const timestamp = Date.now()
+    tempDir = path.join(process.cwd(), 'temp', `merge_${timestamp}`)
+    
+    if (!existsSync(path.dirname(tempDir))) {
+      await mkdir(path.dirname(tempDir), { recursive: true })
+    }
     await mkdir(tempDir, { recursive: true })
 
-    try {
-      // Download all video clips
-      const clipFiles: string[] = []
-      for (let i = 0; i < videoClips.length; i++) {
-        const clipUrl = videoClips[i]
-        const clipFileName = `clip_${i + 1}.mp4`
-        const clipFilePath = join(tempDir, clipFileName)
-        
-        console.log(`Downloading clip ${i + 1}/${videoClips.length}: ${clipUrl}`)
-        
-        const response = await fetch(clipUrl)
-        if (!response.ok) {
-          throw new Error(`Failed to download clip ${i + 1}: ${response.statusText}`)
-        }
-        
-        const buffer = await response.arrayBuffer()
-        await writeFile(clipFilePath, Buffer.from(buffer))
-        clipFiles.push(clipFilePath)
-      }
+    // Download all videos
+    console.log('📥 Downloading videos...')
+    for (let i = 0; i < videoUrls.length; i++) {
+      const videoUrl = videoUrls[i]
+      const fileName = `video_${String(i).padStart(3, '0')}.mp4`
+      const filePath = path.join(tempDir, fileName)
 
-      // Create concat file for FFmpeg
-      const concatFilePath = join(tempDir, 'concat.txt')
-      const concatContent = clipFiles.map(file => `file '${file}'`).join('\n')
-      await writeFile(concatFilePath, concatContent)
-
-      // Merge videos using FFmpeg
-      const outputFilePath = join(tempDir, 'merged_video.mp4')
-      const ffmpegCommand = `ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputFilePath}" -y`
-      
-      const { stdout, stderr } = await execAsync(ffmpegCommand)
-      
-      if (stderr && !stderr.includes('frame=')) {
-        throw new Error(`FFmpeg error: ${stderr}`)
-      }
-      
-      // Read the merged video file
-      const mergedVideoBuffer = await readFile(outputFilePath)
-      
-      // Upload to cloud storage
-      const mergedVideoUrl = await uploadToCloudStorage(mergedVideoBuffer, 'merged-video.mp4')
-
-      return NextResponse.json({
-        mergedVideoUrl: mergedVideoUrl,
-        totalClips: videoClips.length,
-        success: true
-      })
-
-    } finally {
-      // Clean up temporary files
       try {
-        await execAsync(`rm -rf "${tempDir}"`)
-      } catch (cleanupError) {
-        console.error('Error cleaning up temporary files:', cleanupError)
+        const response = await fetch(videoUrl)
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        const arrayBuffer = await response.arrayBuffer()
+        await writeFile(filePath, Buffer.from(arrayBuffer))
+        downloadedFiles.push(filePath)
+        console.log(`✅ Downloaded video ${i + 1}/${videoUrls.length}`)
+      } catch (error) {
+        throw new Error(`Failed to download video ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
     }
 
+    // Create ffmpeg concat file
+    const concatFile = path.join(tempDir, 'concat.txt')
+    const concatContent = downloadedFiles
+      .map(file => `file '${path.basename(file)}'`)
+      .join('\n')
+    
+    await writeFile(concatFile, concatContent)
+
+    // Define output file
+    outputFile = path.join(tempDir, `merged.${outputFormat}`)
+
+    // Run ffmpeg command
+    console.log('🔄 Running ffmpeg merge...')
+    const ffmpegCommand = [
+      'ffmpeg',
+      '-f concat',
+      '-safe 0',
+      `-i "${concatFile}"`,
+      '-c copy', // Copy streams without re-encoding for speed
+      '-avoid_negative_ts make_zero',
+      `"${outputFile}"`
+    ].join(' ')
+
+    console.log('Command:', ffmpegCommand)
+    
+    const { stdout, stderr } = await execAsync(ffmpegCommand, {
+      cwd: tempDir,
+      timeout: 120000 // 2 minute timeout
+    })
+
+    if (stderr && !stderr.includes('video:') && !stderr.includes('audio:')) {
+      console.warn('FFmpeg stderr:', stderr)
+    }
+
+    // Check if output file exists
+    if (!existsSync(outputFile)) {
+      throw new Error('FFmpeg failed to create output file')
+    }
+
+    // Read the merged video file
+    const fs = await import('fs')
+    const videoBuffer = fs.readFileSync(outputFile)
+    
+    // Convert to base64 data URL (for immediate use)
+    // In production, upload to storage service instead
+    const base64Video = videoBuffer.toString('base64')
+    const dataUrl = `data:video/${outputFormat};base64,${base64Video}`
+
+    console.log('✅ FFmpeg merge completed successfully')
+    console.log(`📊 Output file size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`)
+
+    const response: MergeVideosResponse = {
+      success: true,
+      mergedVideoUrl: dataUrl, // In production, this would be a storage URL
+      previewUrl: dataUrl,
+      format: outputFormat,
+      duration: videoUrls.length * 10, // You could parse this from ffmpeg output
+      fileSize: videoBuffer.length,
+      videoInfo: {
+        inputVideos: videoUrls,
+        totalInputs: videoUrls.length,
+        mergeOrder: Array.from({ length: videoUrls.length }, (_, i) => i + 1)
+      }
+    }
+
+    return NextResponse.json(response)
+
   } catch (error) {
-    console.error('Error merging video clips:', error)
-    return NextResponse.json({ 
-      error: "Internal server error", 
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    console.error('❌ FFmpeg merge failed:', error)
+    return NextResponse.json(
+      { 
+        error: `Video merge failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        details: error instanceof Error ? error.stack : undefined
+      },
+      { status: 500 }
+    )
+  } finally {
+    // Cleanup temporary files
+    try {
+      if (downloadedFiles.length > 0) {
+        await Promise.all(downloadedFiles.map(file => unlink(file).catch(() => {})))
+      }
+      if (outputFile && existsSync(outputFile)) {
+        await unlink(outputFile).catch(() => {})
+      }
+      if (tempDir && existsSync(tempDir)) {
+        const { rm } = await import('fs/promises')
+        await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+      }
+      console.log('🧹 Cleanup completed')
+    } catch (cleanupError) {
+      console.warn('⚠️ Cleanup warning:', cleanupError)
+    }
   }
-}
-
-async function uploadToCloudStorage(videoBuffer: Buffer, fileName: string): Promise<string> {
-  // Implement cloud storage upload here
-  // Example: AWS S3, Google Cloud Storage, etc.
-  return `https://your-storage-service.com/videos/${fileName}`
-}
-*/
-
- 
+} 

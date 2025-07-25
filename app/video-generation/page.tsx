@@ -132,158 +132,40 @@ export default function VideoGenerationPage() {
     setVideoClips(clips)
 
     try {
-      // Generate clips sequentially
-      for (let i = 0; i < clips.length; i++) {
-        const clip = clips[i]
-        const frame = generatedFrames[clip.startFrame] // Use single frame
+        const generateVideoClips = Array.from({ length: generatedFrames.length }, async (_, i) => {
+        const frame = generatedFrames[i]
+        const response = await fetch('/api/generate_video_clip', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            frame,
+            prompt: frame.prompt,
+          }),
+        })
 
-        // Update clip status to generating
-        setVideoClips(prev => prev.map(c => 
-          c.id === clip.id ? { ...c, status: 'generating' } : c
-        ))
+        const result = await response.json()
 
-        console.log(`Generating clip ${i + 1}/${clips.length}: Frame ${clip.startFrame + 1}`)
-
-                  try {
-            // Check if image URL is available
-            if (!frame.imageUrl) {
-              throw new Error('Image URL is not available. Please regenerate frames.')
-            }
-            
-            // Convert image URL to base64 if it's not already
-            const frameImageData = await convertImageToBase64(frame.imageUrl)
-
-            // Get scene-specific story for this clip
-            const sceneStory = frame.sceneStory || frame.description
-            const fullStory = frame.fullStory
-          
-          // Create system prompt with full story context
-          const systemPrompt = fullStory ? 
-            `You are creating a video clip for: "${fullStory.title}"
-
-Overall Story: ${fullStory.overallStory}
-
-Style: ${fullStory.style}
-Mood: ${fullStory.mood}`:
-              `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
-
-
-            const response = generateVideoClip({
-              startImage: frameImageData,
-              prompt: sceneStory, // Scene-specific story as user prompt
-              clipIndex: i,
-              totalClips: clips.length,
-          });
-          let videoResult : any;
-          response.then(result => videoResult = result)
-          
-          // const result = await response.json()
-
-          // if (result.error) {
-          //   throw new Error(result.error)
-          // }
-
-          // Upload the generated video clip to Supabase immediately (only if not a fallback)
-          // if (!result.fallback) {
-            try {
-              const currentSession = localStorage.getItem('currentSession')
-              const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-              console.log(`Uploading video clip ${clip.id} to Supabase...`)
-              const videoResult = await response;
-              const uploadResult = await uploadMovieToStorage({
-                videoUrl: videoResult.videoUrl,
-                userId: userId,
-                filename: `video_clip_${clip.id}_${Date.now()}`,
-                duration: 5, // Each clip is 5 seconds
-                thumbnail: frame.imageUrl
-              })
-              // Update clip with Supabase URL
-              setVideoClips(prev => prev.map(c =>
-                c.id === clip.id ? {
-                  ...c,
-                  status: 'completed',
-                  videoUrl: uploadResult.publicUrl, // Use Supabase URL instead of original
-                  isFallback: false
-                } : c
-              ))
-              console.log(`Clip ${i + 1} uploaded to Supabase successfully:`, uploadResult.publicUrl)
-            } catch (uploadError) {
-              console.error(`Error uploading clip ${i + 1} to Supabase:`, uploadError)
-              const videoResult = await response;
-              // Keep the original URL if upload fails
-              setVideoClips(prev => prev.map(c =>
-                c.id === clip.id ? {
-                  ...c,
-                  status: 'completed',
-                  videoUrl: videoResult.videoUrl, // Use the original video URL
-                  isFallback: false
-                } : c
-              ))
-            }
-          // } else {
-          //   // Handle fallback video (don't upload to Supabase)
-          //   console.log(`Clip ${i + 1} is a fallback video, skipping Supabase upload`);
-          //   setVideoClips(prev => prev.map(c => 
-          //     c.id === clip.id ? { 
-          //       ...c, 
-          //       status: 'completed', 
-          //       videoUrl: result.videoUrl,
-          //       optimizedPrompt: result.optimizedPrompt,
-          //       isFallback: true,
-          //       note: result.note
-          //     } : c
-          //   ))
-            
-          //   // Show notification for fallback video
-          //   if (result.note) {
-          //     console.log(`Fallback video note: ${result.note}`);
-          //   }
-          // }
-
-          // console.log(`Clip ${i + 1} generated successfully:`, result.videoUrl)
-
-        } catch (error) {
-          console.error(`Error generating clip ${i + 1}:`, error)
-          
-          // Provide more user-friendly error messages
-          let errorMessage = 'Unknown error occurred';
-          if (error instanceof Error) {
-            if (error.message.includes('timed out')) {
-              errorMessage = 'Video generation timed out - please try again';
-            } else if (error.message.includes('failed')) {
-              errorMessage = 'Video generation failed - please try again';
-            } else if (error.message.includes('canceled')) {
-              errorMessage = 'Video generation was canceled';
-            } else {
-              errorMessage = error.message;
-            }
-          }
-          
-          // Update clip with error
-          setVideoClips(prev => prev.map(c => 
-            c.id === clip.id ? { 
-              ...c, 
-              status: 'failed', 
-              error: errorMessage
-            } : c
-          ))
+        if (result.error) {
+          throw new Error(result.error)
         }
 
-        // Update progress
-        const progress = ((i + 1) / clips.length) * 100
-        setClipGenerationProgress(progress)
-      }
+        // Update the corresponding clip with the generated video URL
+        setVideoClips(prevClips => {
+          const updatedClips = [...prevClips]
+          updatedClips[i] = {
+            ...updatedClips[i],
+            videoUrl: result.videoUrl,
+            status: 'completed',
+          }
+          return updatedClips
+        })
 
-      // Check if all clips were generated successfully
-      const completedClips = clips.filter(clip => clip.status === 'completed')
-      if (completedClips.length === clips.length) {
-        setCurrentStep("clips-ready")
-      } else {
-        // Some clips failed
-        alert(`Generated ${completedClips.length}/${clips.length} clips successfully. Some clips failed to generate.`)
-        setCurrentStep("clips-ready")
-      }
-
+        setClipGenerationProgress(prev => prev + 1)
+      })
+      await Promise.all(generateVideoClips);
+      
     } catch (error) {
       console.error('Error during clip generation:', error)
       alert('Error generating video clips. Please try again.')
@@ -316,7 +198,7 @@ Mood: ${fullStory.mood}`:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          videoClips: clipUrls
+          videoUrls: clipUrls
         }),
       })
 
@@ -332,7 +214,7 @@ Mood: ${fullStory.mood}`:
       const finalVideo: GeneratedVideo = {
         id: Date.now().toString(),
         title: `Generated Video - ${new Date().toLocaleDateString()}`,
-        duration: `${completedClips.length * 5}s`,
+        duration: result.duration,
         prompt: generatedFrames[0]?.prompt || '',
         frames: generatedFrames,
         videoClips: completedClips,
