@@ -3,7 +3,8 @@
 import type React from "react"
 import Link from "next/link"
 
-import { useState } from "react"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,9 +14,18 @@ import {
   Play,
   Download,
   ArrowLeft,
-  Library,
   Home,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Upload,
+  Grid3X3,
+  ChevronLeft,
+  ChevronRight,
+  FileImage,
 } from "lucide-react"
+import { uploadVideo, uploadMovieToStorage } from "@/lib/upload/video_upload"
+import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
 
 interface VideoFrame {
   id: number
@@ -23,6 +33,24 @@ interface VideoFrame {
   imageUrl: string
   description: string
   prompt: string
+  sceneStory?: string // Scene-specific story from the generated story
+  fullStory?: {
+    title: string
+    overallStory: string
+    style: string
+    mood: string
+  } // Full story context including style and mood
+}
+
+interface VideoClip {
+  id: number
+  startFrame: number
+  videoUrl: string
+  status: 'pending' | 'generating' | 'completed' | 'failed'
+  error?: string
+  optimizedPrompt?: string // The GPT-4.1 generated prompt
+  isFallback?: boolean // Whether this is a fallback video
+  note?: string // Additional notes about the clip
 }
 
 interface GeneratedVideo {
@@ -31,30 +59,555 @@ interface GeneratedVideo {
   duration: string
   prompt: string
   frames: VideoFrame[]
-  videoUrl: string
-  videoClips?: string[] // Array of individual video clip URLs
+  videoClips: VideoClip[]
+  finalVideoUrl?: string
 }
 
-type VideoGenerationStep = "input" | "generating-video" | "video-ready"
+type VideoGenerationStep = "input" | "generating-clips" | "clips-ready" | "merging-clips" | "video-ready"
 
 export default function VideoGenerationPage() {
   const [currentStep, setCurrentStep] = useState<VideoGenerationStep>("input")
-  const [generatedFrames] = useState<VideoFrame[]>([])
+  const [generatedFrames, setGeneratedFrames] = useState<VideoFrame[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<GeneratedVideo | null>(null)
-  const [videoGenerationProgress, setVideoGenerationProgress] = useState(0)
+  const [videoClips, setVideoClips] = useState<VideoClip[]>([])
+  const [clipGenerationProgress, setClipGenerationProgress] = useState(0)
+  const [mergeProgress, setMergeProgress] = useState(0)
+  const [isGeneratingClips, setIsGeneratingClips] = useState(false)
+  const [isMergingClips, setIsMergingClips] = useState(false)
+  const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
 
+  // Load frames from database on component mount
+  useEffect(() => {
+    const loadFramesFromDatabase = async () => {
+      try {
+        // Get current session from localStorage
+        const currentSession = localStorage.getItem('currentSession')
+        if (!currentSession) {
+          console.log('No current session found')
+          return
+        }
+
+        const { sessionId, userId } = JSON.parse(currentSession)
+        
+        // Fetch frames from database
+        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=${userId}`)
+        const result = await response.json()
+
+        if (result.error) {
+          console.error('Error fetching frames from database:', result.error)
+          return
+        }
+
+        if (result.frames && result.frames.length > 0) {
+          setGeneratedFrames(result.frames)
+          setCurrentStep("input")
+          console.log(`Loaded ${result.frames.length} frames from database for session ${sessionId}`)
+        } else {
+          console.log('No frames found in database')
+        }
+      } catch (error) {
+        console.error('Error loading frames from database:', error)
+      }
+    }
+
+    loadFramesFromDatabase()
+  }, [])
+
+  const generateVideoClips = async () => {
+    setIsGeneratingClips(true)
+    setCurrentStep("generating-clips")
+    setClipGenerationProgress(0)
+
+    // Create clips array - each clip uses a single frame
+    const clips: VideoClip[] = []
+    for (let i = 0; i < generatedFrames.length; i++) {
+      clips.push({
+        id: i + 1,
+        startFrame: i,
+        videoUrl: '',
+        status: 'pending'
+      })
+    }
+
+    setVideoClips(clips)
+
+    try {
+      // Generate clips sequentially
+      for (let i = 0; i < clips.length; i++) {
+        const clip = clips[i]
+        const frame = generatedFrames[clip.startFrame] // Use single frame
+
+        // Update clip status to generating
+        setVideoClips(prev => prev.map(c => 
+          c.id === clip.id ? { ...c, status: 'generating' } : c
+        ))
+
+        console.log(`Generating clip ${i + 1}/${clips.length}: Frame ${clip.startFrame + 1}`)
+
+                  try {
+            // Check if image URL is available
+            if (!frame.imageUrl) {
+              throw new Error('Image URL is not available. Please regenerate frames.')
+            }
+            
+            // Convert image URL to base64 if it's not already
+            const frameImageData = await convertImageToBase64(frame.imageUrl)
+
+            // Get scene-specific story for this clip
+            const sceneStory = frame.sceneStory || frame.description
+            const fullStory = frame.fullStory
+          
+          // Create system prompt with full story context
+          const systemPrompt = fullStory ? 
+            `You are creating a video clip for: "${fullStory.title}"
+
+Overall Story: ${fullStory.overallStory}
+
+Style: ${fullStory.style}
+Mood: ${fullStory.mood}`:
+              `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
+
+
+            const response = generateVideoClip({
+              startImage: frameImageData,
+              prompt: sceneStory, // Scene-specific story as user prompt
+              clipIndex: i,
+              totalClips: clips.length,
+          });
+          let videoResult : any;
+          response.then(result => videoResult = result)
+          
+          // const result = await response.json()
+
+          // if (result.error) {
+          //   throw new Error(result.error)
+          // }
+
+          // Upload the generated video clip to Supabase immediately (only if not a fallback)
+          // if (!result.fallback) {
+            try {
+              const currentSession = localStorage.getItem('currentSession')
+              const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
+              console.log(`Uploading video clip ${clip.id} to Supabase...`)
+              const videoResult = await response;
+              const uploadResult = await uploadMovieToStorage({
+                videoUrl: videoResult.videoUrl,
+                userId: userId,
+                filename: `video_clip_${clip.id}_${Date.now()}`,
+                duration: 5, // Each clip is 5 seconds
+                thumbnail: frame.imageUrl
+              })
+              // Update clip with Supabase URL
+              setVideoClips(prev => prev.map(c =>
+                c.id === clip.id ? {
+                  ...c,
+                  status: 'completed',
+                  videoUrl: uploadResult.publicUrl, // Use Supabase URL instead of original
+                  isFallback: false
+                } : c
+              ))
+              console.log(`Clip ${i + 1} uploaded to Supabase successfully:`, uploadResult.publicUrl)
+            } catch (uploadError) {
+              console.error(`Error uploading clip ${i + 1} to Supabase:`, uploadError)
+              const videoResult = await response;
+              // Keep the original URL if upload fails
+              setVideoClips(prev => prev.map(c =>
+                c.id === clip.id ? {
+                  ...c,
+                  status: 'completed',
+                  videoUrl: videoResult.videoUrl, // Use the original video URL
+                  isFallback: false
+                } : c
+              ))
+            }
+          // } else {
+          //   // Handle fallback video (don't upload to Supabase)
+          //   console.log(`Clip ${i + 1} is a fallback video, skipping Supabase upload`);
+          //   setVideoClips(prev => prev.map(c => 
+          //     c.id === clip.id ? { 
+          //       ...c, 
+          //       status: 'completed', 
+          //       videoUrl: result.videoUrl,
+          //       optimizedPrompt: result.optimizedPrompt,
+          //       isFallback: true,
+          //       note: result.note
+          //     } : c
+          //   ))
+            
+          //   // Show notification for fallback video
+          //   if (result.note) {
+          //     console.log(`Fallback video note: ${result.note}`);
+          //   }
+          // }
+
+          // console.log(`Clip ${i + 1} generated successfully:`, result.videoUrl)
+
+        } catch (error) {
+          console.error(`Error generating clip ${i + 1}:`, error)
+          
+          // Provide more user-friendly error messages
+          let errorMessage = 'Unknown error occurred';
+          if (error instanceof Error) {
+            if (error.message.includes('timed out')) {
+              errorMessage = 'Video generation timed out - please try again';
+            } else if (error.message.includes('failed')) {
+              errorMessage = 'Video generation failed - please try again';
+            } else if (error.message.includes('canceled')) {
+              errorMessage = 'Video generation was canceled';
+            } else {
+              errorMessage = error.message;
+            }
+          }
+          
+          // Update clip with error
+          setVideoClips(prev => prev.map(c => 
+            c.id === clip.id ? { 
+              ...c, 
+              status: 'failed', 
+              error: errorMessage
+            } : c
+          ))
+        }
+
+        // Update progress
+        const progress = ((i + 1) / clips.length) * 100
+        setClipGenerationProgress(progress)
+      }
+
+      // Check if all clips were generated successfully
+      const completedClips = clips.filter(clip => clip.status === 'completed')
+      if (completedClips.length === clips.length) {
+        setCurrentStep("clips-ready")
+      } else {
+        // Some clips failed
+        alert(`Generated ${completedClips.length}/${clips.length} clips successfully. Some clips failed to generate.`)
+        setCurrentStep("clips-ready")
+      }
+
+    } catch (error) {
+      console.error('Error during clip generation:', error)
+      alert('Error generating video clips. Please try again.')
+      setCurrentStep("input")
+    } finally {
+      setIsGeneratingClips(false)
+    }
+  }
+
+  const mergeVideoClips = async () => {
+    const completedClips = videoClips.filter(clip => clip.status === 'completed')
+    
+    if (completedClips.length === 0) {
+      alert('No completed video clips to merge')
+      return
+    }
+
+    setIsMergingClips(true)
+    setCurrentStep("merging-clips")
+    setMergeProgress(0)
+
+    try {
+      const clipUrls = completedClips.map(clip => clip.videoUrl)
+
+      console.log(`Merging ${clipUrls.length} video clips`)
+
+      const response = await fetch('/api/merge_video_clips', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoClips: clipUrls
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      setMergeProgress(100)
+
+      // Create final video object
+      const finalVideo: GeneratedVideo = {
+        id: Date.now().toString(),
+        title: `Generated Video - ${new Date().toLocaleDateString()}`,
+        duration: `${completedClips.length * 5}s`,
+        prompt: generatedFrames[0]?.prompt || '',
+        frames: generatedFrames,
+        videoClips: completedClips,
+        finalVideoUrl: result.mergedVideoUrl
+      }
+
+      // Upload final merged video to Supabase using uploadMovieToStorage
+      try {
+        const currentSession = localStorage.getItem('currentSession')
+        const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
+        
+        console.log('Uploading final merged video to Supabase...')
+        const uploadResult = await uploadMovieToStorage({
+          videoUrl: result.mergedVideoUrl,
+          userId: userId,
+          filename: `final_video_${finalVideo.id}`,
+          duration: completedClips.length * 5, // Total duration
+          thumbnail: generatedFrames[0]?.imageUrl
+        })
+        
+        // Update the final video with the Supabase URL
+        finalVideo.finalVideoUrl = uploadResult.publicUrl
+        console.log('Final video uploaded to Supabase successfully:', uploadResult.publicUrl)
+      } catch (error) {
+        console.error('Error uploading final video to Supabase:', error)
+        // Keep the original URL if upload fails
+      }
+
+      setGeneratedVideo(finalVideo)
+      setCurrentStep("video-ready")
+
+      console.log('Video clips merged successfully:', result.mergedVideoUrl)
+
+    } catch (error) {
+      console.error('Error merging video clips:', error)
+      alert('Error merging video clips. Please try again.')
+      setCurrentStep("clips-ready")
+    } finally {
+      setIsMergingClips(false)
+    }
+  }
+
+  const convertImageToBase64 = async (imageUrl: string): Promise<string> => {
+    // If it's already a base64 data URL, return it
+    if (imageUrl.startsWith('data:image/')) {
+      return imageUrl
+    }
+
+    // If it's a cloud URL or regular URL, fetch and convert to base64
+    try {
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`)
+      }
+      
+      const blob = await response.blob()
+      
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    } catch (error) {
+      console.error('Error converting image to base64:', error)
+      throw error
+    }
+  }
 
   const stopGeneration = () => {
-     setCurrentStep("input")
+    setIsGeneratingClips(false)
+    setIsMergingClips(false)
+    setCurrentStep("input")
   }
 
   const resetGeneration = () => {
     setCurrentStep("input")
     setGeneratedVideo(null)
-    setVideoGenerationProgress(0)
+    setVideoClips([])
+    setClipGenerationProgress(0)
+    setMergeProgress(0)
+    setIsGeneratingClips(false)
+    setIsMergingClips(false)
   }
 
+  const downloadVideo = () => {
+    if (generatedVideo?.finalVideoUrl) {
+      const link = document.createElement('a')
+      link.href = generatedVideo.finalVideoUrl
+      link.download = `generated-video-${Date.now()}.mp4`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+  }
 
+  const uploadFramesToSupabase = async () => {
+    if (generatedFrames.length === 0) return
+
+    try {
+      // Show loading state
+      const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Uploading to Supabase...'
+        uploadButton.setAttribute('disabled', 'true')
+      }
+
+      // Upload each frame to Supabase
+      const uploadPromises = generatedFrames.map(async (frame, index) => {
+        const frameNumber = (index + 1).toString().padStart(2, '0')
+        const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
+        
+        // Convert image URL to base64 if it's not already
+        let imageData = frame.imageUrl
+        if (!imageData.startsWith('data:image/')) {
+          // Fetch the image and convert to base64
+          const response = await fetch(imageData)
+          const blob = await response.blob()
+          imageData = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.readAsDataURL(blob)
+          })
+        }
+
+        // Upload to Supabase
+        const uploadResponse = await fetch('/api/upload_image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            imageData: imageData,
+            frameId: frame.id
+          }),
+        })
+
+        const result = await uploadResponse.json()
+        
+        if (result.error) {
+          throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
+        }
+
+        console.log(`Frame ${frame.id} uploaded to Supabase:`, result.imageUrl)
+        return result
+      })
+
+      // Wait for all uploads to complete
+      const results = await Promise.all(uploadPromises)
+      
+      // Update frame URLs with Supabase URLs
+      const updatedFrames = generatedFrames.map((frame, index) => ({
+        ...frame,
+        imageUrl: results[index].imageUrl
+      }))
+      
+      setGeneratedFrames(updatedFrames)
+
+      alert(`Successfully uploaded ${generatedFrames.length} frames to Supabase!`)
+      
+    } catch (error) {
+      console.error('Error uploading frames to Supabase:', error)
+      alert(`Failed to upload frames to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      // Reset button state
+      const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Upload Frames to Supabase'
+        uploadButton.removeAttribute('disabled')
+      }
+    }
+  }
+
+  const uploadVideoClipsToSupabase = async () => {
+    const completedClips = videoClips.filter(clip => clip.status === 'completed')
+    
+    if (completedClips.length === 0) {
+      alert('No completed video clips to upload')
+      return
+    }
+
+    try {
+      // Show loading state
+      const uploadButton = document.getElementById('upload-clips-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Uploading Clips to Supabase...'
+        uploadButton.setAttribute('disabled', 'true')
+      }
+
+      const currentSession = localStorage.getItem('currentSession')
+      const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
+      
+      // Upload each completed video clip to Supabase
+      for (const clip of completedClips) {
+        if (clip.videoUrl && !clip.videoUrl.includes('supabase')) {
+          console.log(`Uploading video clip ${clip.id} to Supabase...`)
+          const uploadResult = await uploadMovieToStorage({
+            videoUrl: clip.videoUrl,
+            userId: userId,
+            filename: `video_clip_${clip.id}_${Date.now()}`,
+            duration: 5, // Each clip is 5 seconds
+            thumbnail: generatedFrames[clip.startFrame]?.imageUrl
+          })
+          
+          // Update clip with Supabase URL
+          setVideoClips(prev => prev.map(c => 
+            c.id === clip.id ? { ...c, videoUrl: uploadResult.publicUrl } : c
+          ))
+          
+          console.log(`Video clip ${clip.id} uploaded to Supabase successfully:`, uploadResult.publicUrl)
+        }
+      }
+
+      alert(`Successfully uploaded ${completedClips.length} video clips to Supabase!`)
+      
+    } catch (error) {
+      console.error('Error uploading video clips to Supabase:', error)
+      alert(`Failed to upload video clips to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      // Reset button state
+      const uploadButton = document.getElementById('upload-clips-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Upload Video Clips to Supabase'
+        uploadButton.removeAttribute('disabled')
+      }
+    }
+  }
+
+  const uploadFinalVideoToSupabase = async () => {
+    if (!generatedVideo?.finalVideoUrl) {
+      alert('No final video available to upload')
+      return
+    }
+
+    try {
+      // Show loading state
+      const uploadButton = document.getElementById('upload-final-video-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Uploading to Supabase...'
+        uploadButton.setAttribute('disabled', 'true')
+      }
+
+      const currentSession = localStorage.getItem('currentSession')
+      const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
+      
+      console.log('Uploading final video to Supabase...')
+      const uploadResult = await uploadMovieToStorage({
+        videoUrl: generatedVideo.finalVideoUrl,
+        userId: userId,
+        filename: `final_video_${generatedVideo.id}_${Date.now()}`,
+        duration: generatedVideo.videoClips.length * 5, // Total duration
+        thumbnail: generatedVideo.frames[0]?.imageUrl
+      })
+      
+      // Update the final video with the Supabase URL
+      setGeneratedVideo(prev => prev ? {
+        ...prev,
+        finalVideoUrl: uploadResult.publicUrl
+      } : null)
+      
+      console.log('Final video uploaded to Supabase successfully:', uploadResult.publicUrl)
+      alert('Final video uploaded to Supabase successfully!')
+      
+    } catch (error) {
+      console.error('Error uploading final video to Supabase:', error)
+      alert(`Failed to upload final video to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      // Reset button state
+      const uploadButton = document.getElementById('upload-final-video-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Upload Final Video to Supabase'
+        uploadButton.removeAttribute('disabled')
+      }
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
@@ -75,16 +628,16 @@ export default function VideoGenerationPage() {
                   <Video className="h-4 w-4" />
                   Video Generation
                 </Link>
-                <Link href="/library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <Library className="h-4 w-4" />
-                  My Library
+                <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <FileImage className="h-4 w-4" />
+                  Media Library
                 </Link>
               </div>
             </div>
           </div>
         </div>
       </nav>
-
+      
       <div className="p-4">
         <div className="max-w-6xl mx-auto space-y-8">
           {/* Page Header */}
@@ -99,31 +652,259 @@ export default function VideoGenerationPage() {
 
           {/* Main Content */}
           {currentStep === "input" && (
-            <div className="text-center space-y-6">
-              <div className="bg-white rounded-lg p-8 shadow-sm border">
-                <Video className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  No Frames Available
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  You need to generate frames first before creating a video.
-                </p>
-                <Link href="/">
-                  <Button>
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Go to Frame Generation
-                  </Button>
-                </Link>
-              </div>
+            <div className="space-y-6">
+              {generatedFrames.length === 0 ? (
+                <div className="text-center space-y-6">
+                  <div className="bg-white rounded-lg p-8 shadow-sm border">
+                    <Video className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      No Frames Available
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      You need to generate frames first before creating a video.
+                    </p>
+                    <Link href="/">
+                      <Button>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Go to Frame Generation
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Frame Preview Section */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Grid3X3 className="h-5 w-5" />
+                        Frame Preview
+                      </CardTitle>
+                      <CardDescription>
+                        Preview your {generatedFrames.length} frames before generating video clips
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Large Frame Display */}
+                      <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px] relative">
+                        {generatedFrames[selectedFrameIndex]?.imageUrl ? (
+                          <img
+                            src={generatedFrames[selectedFrameIndex].imageUrl}
+                            alt={`Frame ${selectedFrameIndex + 1}`}
+                            className="max-w-full max-h-full object-contain"
+                          />
+                        ) : (
+                          <div className="text-center space-y-2">
+                            <Video className="h-12 w-12 mx-auto text-gray-400" />
+                            <p className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</p>
+                            <p className="text-xs text-gray-500">Image not available</p>
+                          </div>
+                        )}
+                        
+                        {/* Frame Navigation */}
+                        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedFrameIndex(Math.max(0, selectedFrameIndex - 1))}
+                            disabled={selectedFrameIndex === 0}
+                            className="bg-white/80 backdrop-blur-sm"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                          <div className="bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-medium">
+                            Frame {selectedFrameIndex + 1} of {generatedFrames.length}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedFrameIndex(Math.min(generatedFrames.length - 1, selectedFrameIndex + 1))}
+                            disabled={selectedFrameIndex === generatedFrames.length - 1}
+                            className="bg-white/80 backdrop-blur-sm"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Frame Info */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{generatedFrames[selectedFrameIndex]?.timestamp}</Badge>
+                            <span className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</span>
+                          </div>
+                          {generatedFrames[selectedFrameIndex]?.fullStory && (
+                            <Badge variant="secondary" className="text-xs">
+                              {generatedFrames[selectedFrameIndex].fullStory.style} • {generatedFrames[selectedFrameIndex].fullStory.mood}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 mb-2">
+                          {generatedFrames[selectedFrameIndex]?.description}
+                        </p>
+                        {generatedFrames[selectedFrameIndex]?.sceneStory && (
+                          <p className="text-xs text-gray-600 italic">
+                            Scene: {generatedFrames[selectedFrameIndex].sceneStory}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Frame Thumbnails */}
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">All Frames</h4>
+                        <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                          {generatedFrames.map((frame, index) => (
+                            <button
+                              key={frame.id}
+                              onClick={() => setSelectedFrameIndex(index)}
+                              className={`aspect-square rounded border-2 overflow-hidden transition-all relative bg-gray-100 flex items-center justify-center ${
+                                selectedFrameIndex === index
+                                  ? "border-blue-500 ring-2 ring-blue-200"
+                                  : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            >
+                              {frame.imageUrl ? (
+                                <img
+                                  src={frame.imageUrl}
+                                  alt={`Frame ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <span className="text-xs text-gray-500">No image</span>
+                                </div>
+                              )}
+                              <div className="absolute inset-x-0 bottom-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
+                                {frame.timestamp}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Video Generation Controls */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Video className="h-5 w-5" />
+                        Video Generation
+                      </CardTitle>
+                      <CardDescription>
+                        Generate video clips from your {generatedFrames.length} frames
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Check if frames have image URLs */}
+                      {generatedFrames.some(frame => frame.imageUrl) ? (
+                        <>
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CheckCircle className="h-4 w-4 text-blue-600" />
+                              <span className="text-sm font-medium text-blue-800">Ready to Generate</span>
+                            </div>
+                                                  <p className="text-sm text-blue-700">
+                        This will create {generatedFrames.length} video clips, each 5 seconds long.
+                        Each clip will be generated from a single frame using the gen4 model.
+                      </p>
+                          </div>
+                          
+                          <div className="flex gap-2 justify-center">
+                            <Button 
+                              onClick={generateVideoClips}
+                              disabled={isGeneratingClips}
+                              className="px-8"
+                            >
+                              {isGeneratingClips ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Generating Clips...
+                                </>
+                              ) : (
+                                <>
+                                  <Video className="h-4 w-4 mr-2" />
+                                  Generate Video Clips
+                                </>
+                              )}
+                            </Button>
+                            <Button 
+                              id="upload-frames-to-supabase-btn"
+                              onClick={uploadFramesToSupabase}
+                              variant="outline"
+                              className="px-8"
+                            >
+                              <Upload className="h-4 w-4 mr-2" />
+                              Upload Frames to Supabase
+                            </Button>
+                            <Button 
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch('/api/test_runway');
+                                  const result = await response.json();
+                                  if (result.status === 'success') {
+                                    alert('Runway API is accessible!');
+                                  } else {
+                                    alert(`Runway API test failed: ${result.error || 'Unknown error'}`);
+                                  }
+                                } catch (error) {
+                                  alert(`Failed to test Runway API: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                                }
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="px-4"
+                            >
+                              Test Runway API
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-center space-y-4">
+                          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <h3 className="text-sm font-medium text-yellow-800 mb-2">
+                              Images Not Available
+                            </h3>
+                            <p className="text-sm text-yellow-700 mb-4">
+                              The frame images are not available. Please regenerate frames or upload them to Supabase first.
+                            </p>
+                            <div className="flex gap-2 justify-center">
+                              <Link href="/">
+                                <Button variant="outline" size="sm">
+                                  <ArrowLeft className="h-4 w-4 mr-2" />
+                                  Regenerate Frames
+                                </Button>
+                              </Link>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  // Clear any old session data
+                                  localStorage.removeItem('currentSession')
+                                  setGeneratedFrames([])
+                                  setCurrentStep("input")
+                                }}
+                              >
+                                Clear Session
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
             </div>
           )}
 
-          {currentStep === "generating-video" && (
+          {currentStep === "generating-clips" && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Video className="h-5 w-5" />
-                  Video Generation Progress
+                  Video Clip Generation Progress
                 </CardTitle>
                 <CardDescription>Creating video clips using Runway API</CardDescription>
               </CardHeader>
@@ -131,47 +912,41 @@ export default function VideoGenerationPage() {
                 <div className="space-y-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-600 mb-2">
-                      {Math.round(videoGenerationProgress)}%
+                      {Math.round(clipGenerationProgress)}%
                     </div>
-                    <Progress value={videoGenerationProgress} className="w-full" />
+                    <Progress value={clipGenerationProgress} className="w-full" />
                     <p className="text-sm text-gray-600 mt-2">
-                      {videoGenerationProgress >= 95 
-                        ? "Merging video clips into final video..."
-                        : `Generating video clips... ${Math.floor(videoGenerationProgress / (100 / (generatedFrames.length - 1))) + 1} of ${generatedFrames.length - 1} clips`
-                      }
+                      Generating video clips... {videoClips.filter(c => c.status === 'completed').length} of {videoClips.length} clips
                     </p>
-                    
-                    {/* Skeleton loading animation for progress */}
-                    {videoGenerationProgress < 100 && (
-                      <div className="mt-4 space-y-2">
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        </div>
-                        <p className="text-xs text-gray-500">Processing with Runway API...</p>
-                      </div>
-                    )}
                   </div>
 
                   {/* Individual Clip Progress */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium">Clip Progress:</h4>
                     <div className="grid grid-cols-5 gap-2">
-                      {Array.from({ length: generatedFrames.length - 1 }, (_, i) => (
-                        <div key={i} className="text-center">
-                          {videoGenerationProgress >= ((i + 1) / (generatedFrames.length - 1)) * 100 ? (
-                            // Completed clip
+                      {videoClips.map((clip) => (
+                        <div key={clip.id} className="text-center">
+                          {clip.status === 'completed' ? (
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-green-100 text-green-600">
-                              ✓
+                              <CheckCircle className="h-4 w-4" />
+                            </div>
+                          ) : clip.status === 'failed' ? (
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-red-100 text-red-600">
+                              <AlertCircle className="h-4 w-4" />
+                            </div>
+                          ) : clip.status === 'generating' ? (
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-blue-100 text-blue-600">
+                              <Loader2 className="h-4 w-4 animate-spin" />
                             </div>
                           ) : (
-                            // Loading skeleton for incomplete clips
-                            <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex items-center justify-center">
-                              <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
+                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                              <div className="w-4 h-4 bg-gray-300 rounded-full"></div>
                             </div>
                           )}
-                          <p className="text-xs text-gray-500 mt-1">Clip {i + 1}</p>
+                          <p className="text-xs text-gray-500 mt-1">Clip {clip.id}</p>
+                          <p className="text-xs text-gray-400">
+                            Frame {clip.startFrame + 1}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -184,7 +959,227 @@ export default function VideoGenerationPage() {
                       variant="outline"
                       className="px-6"
                     >
-                      Stop Video Generation
+                      Stop Generation
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {currentStep === "clips-ready" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  Video Clips Generated
+                </CardTitle>
+                <CardDescription>
+                  {videoClips.filter(c => c.status === 'completed').length} of {videoClips.length} clips generated successfully
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Clip Status Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {videoClips.map((clip) => (
+                    <div key={clip.id} className="border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Clip {clip.id}</span>
+                        <Badge 
+                          variant={clip.status === 'completed' ? 'default' : clip.status === 'failed' ? 'destructive' : 'secondary'}
+                          className="text-xs"
+                        >
+                          {clip.status === 'completed' ? '✓ Complete' : 
+                           clip.status === 'failed' ? '✗ Failed' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-gray-600 mb-2">
+                        Frame {clip.startFrame + 1}
+                      </p>
+                      {clip.status === 'completed' && (
+                        <div className="space-y-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(clip.videoUrl, '_blank')}
+                            className="w-full"
+                          >
+                            <Play className="h-3 w-3 mr-1" />
+                            View Clip
+                          </Button>
+                          {clip.isFallback && (
+                            <div className="text-xs text-amber-600 bg-amber-50 p-1 rounded text-center">
+                              ⚠️ Fallback Video
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {clip.status === 'failed' && clip.error && (
+                        <div className="mt-1">
+                          <p className="text-xs text-red-600 mb-1">{clip.error}</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              // Retry the specific clip
+                              const retryClip = async () => {
+                                try {
+                                  // Reset clip status
+                                  setVideoClips(prev => prev.map(c => 
+                                    c.id === clip.id ? { ...c, status: 'generating', error: undefined } : c
+                                  ))
+                                  
+                                  // Regenerate the clip
+                                  const startFrame = generatedFrames[clip.startFrame]
+                                  
+                                  const startImageData = await convertImageToBase64(startFrame.imageUrl)
+                                  
+                                  const sceneStory = startFrame.sceneStory || startFrame.description
+                                  const fullStory = startFrame.fullStory
+                                  
+                                  const systemPrompt = fullStory ? 
+                                    `You are creating a video clip for: "${fullStory.title}"
+
+Overall Story: ${fullStory.overallStory}
+
+Style: ${fullStory.style}
+Mood: ${fullStory.mood}`:
+                                      `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
+                                  let result : any;
+                                  generateVideoClip({
+                                      startImage: startImageData,
+                                      clipIndex: clip.id - 1,
+                                      totalClips: videoClips.length,
+                                      prompt: sceneStory
+                                    }).then(data => result = data)
+
+                                  // Upload the retry clip to Supabase
+                                  try {
+                                    const currentSession = localStorage.getItem('currentSession')
+                                    const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
+                                    
+                                    console.log(`Uploading retry video clip ${clip.id} to Supabase...`)
+                                    const uploadResult = await uploadMovieToStorage({
+                                      videoUrl: result.videoUrl,
+                                      userId: userId,
+                                      filename: `video_clip_${clip.id}_retry_${Date.now()}`,
+                                      duration: 5,
+                                      thumbnail: generatedFrames[clip.startFrame]?.imageUrl
+                                    })
+                                    
+                                    // Update clip with success and Supabase URL
+                                    setVideoClips(prev => prev.map(c => 
+                                      c.id === clip.id ? { 
+                                        ...c, 
+                                        status: 'completed', 
+                                        videoUrl: uploadResult.publicUrl,
+                                        optimizedPrompt: result.optimizedPrompt
+                                      } : c
+                                    ))
+                                    
+                                    console.log(`Retry clip ${clip.id} uploaded to Supabase successfully:`, uploadResult.publicUrl)
+                                  } catch (uploadError) {
+                                    console.error(`Error uploading retry clip ${clip.id} to Supabase:`, uploadError)
+                                    // Keep the original URL if upload fails
+                                    setVideoClips(prev => prev.map(c => 
+                                      c.id === clip.id ? { 
+                                        ...c, 
+                                        status: 'completed', 
+                                        videoUrl: result.videoUrl,
+                                        optimizedPrompt: result.optimizedPrompt
+                                      } : c
+                                    ))
+                                  }
+
+                                } catch (retryError) {
+                                  console.error(`Error retrying clip ${clip.id}:`, retryError)
+                                  setVideoClips(prev => prev.map(c => 
+                                    c.id === clip.id ? { 
+                                      ...c, 
+                                      status: 'failed', 
+                                      error: retryError instanceof Error ? retryError.message : 'Retry failed'
+                                    } : c
+                                  ))
+                                }
+                              }
+                              
+                              retryClip()
+                            }}
+                            className="w-full text-xs"
+                          >
+                            <Loader2 className="h-3 w-3 mr-1" />
+                            Retry Clip
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-4">
+                  <Button 
+                    onClick={mergeVideoClips}
+                    disabled={videoClips.filter(c => c.status === 'completed').length === 0 || isMergingClips}
+                    className="flex-1"
+                  >
+                    {isMergingClips ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Merging Clips...
+                      </>
+                    ) : (
+                      <>
+                        <Video className="h-4 w-4 mr-2" />
+                        Merge Video Clips
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    id="upload-clips-to-supabase-btn"
+                    onClick={uploadVideoClipsToSupabase}
+                    disabled={videoClips.filter(c => c.status === 'completed').length === 0}
+                    variant="outline"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Clips to Supabase
+                  </Button>
+                  <Button variant="outline" onClick={resetGeneration}>
+                    Start Over
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {currentStep === "merging-clips" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Merging Video Clips
+                </CardTitle>
+                <CardDescription>Combining video clips into final video</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600 mb-2">
+                      {Math.round(mergeProgress)}%
+                    </div>
+                    <Progress value={mergeProgress} className="w-full" />
+                    <p className="text-sm text-gray-600 mt-2">
+                      Merging {videoClips.filter(c => c.status === 'completed').length} video clips...
+                    </p>
+                  </div>
+
+                  {/* Stop Button */}
+                  <div className="flex justify-center">
+                    <Button
+                      onClick={stopGeneration}
+                      variant="outline"
+                      className="px-6"
+                    >
+                      Stop Merging
                     </Button>
                   </div>
                 </div>
@@ -209,53 +1204,39 @@ export default function VideoGenerationPage() {
                       <p className="text-sm text-gray-600">Final Merged Video</p>
                       <p className="text-xs text-gray-500">Duration: {generatedVideo.duration}</p>
                       <p className="text-xs text-gray-500">
-                        {generatedVideo.videoClips?.length || 0} clips merged
+                        {generatedVideo.videoClips.length} clips merged
                       </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(generatedVideo.videoUrl, '_blank')}
-                        className="mt-2"
-                      >
-                        <Play className="h-3 w-3 mr-1" />
-                        Play Final Video
-                      </Button>
+                      {generatedVideo.finalVideoUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(generatedVideo.finalVideoUrl, '_blank')}
+                          className="mt-2"
+                        >
+                          <Play className="h-3 w-3 mr-1" />
+                          Play Final Video
+                        </Button>
+                      )}
                     </div>
                   </div>
 
-                  {/* Video Clips Information */}
-                  {generatedVideo.videoClips && generatedVideo.videoClips.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-medium">Generated Video Clips:</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {generatedVideo.videoClips.map((clipUrl, index) => (
-                          <div key={index} className="border rounded-lg p-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium">Clip {index + 1}</span>
-                              <Badge variant="outline" className="text-xs">5s</Badge>
-                            </div>
-                            <p className="text-xs text-gray-600 mb-2">
-                              {generatedFrames[index]?.timestamp} → {generatedFrames[index + 1]?.timestamp}
-                            </p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => window.open(clipUrl, '_blank')}
-                              className="w-full"
-                            >
-                              <Play className="h-3 w-3 mr-1" />
-                              View Clip
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   <div className="flex gap-4">
-                    <Button className="flex-1">
+                    <Button 
+                      onClick={downloadVideo}
+                      disabled={!generatedVideo.finalVideoUrl}
+                      className="flex-1"
+                    >
                       <Download className="h-4 w-4 mr-2" />
                       Download MP4
+                    </Button>
+                    <Button 
+                      id="upload-final-video-to-supabase-btn"
+                      onClick={uploadFinalVideoToSupabase}
+                      disabled={!generatedVideo.finalVideoUrl}
+                      variant="outline"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload to Supabase
                     </Button>
                     <Button variant="outline" onClick={resetGeneration}>
                       Create New Video
