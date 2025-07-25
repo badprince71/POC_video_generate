@@ -327,7 +327,6 @@ Mood: ${fullStory.mood}`:
       }
 
       setMergeProgress(100)
-
       // Create final video object
       const finalVideo: GeneratedVideo = {
         id: Date.now().toString(),
@@ -337,32 +336,35 @@ Mood: ${fullStory.mood}`:
         frames: generatedFrames,
         videoClips: completedClips,
         finalVideoUrl: result.mergedVideoUrl
-      }
-
-      // Upload final merged video to Supabase using uploadMovieToStorage
-      try {
-        const currentSession = localStorage.getItem('currentSession')
-        const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-        
-        console.log('Uploading final merged video to Supabase...')
-        const uploadResult = await uploadMovieToStorage({
-          videoUrl: result.mergedVideoUrl,
-          userId: userId,
-          filename: `final_video_${finalVideo.id}`,
-          duration: completedClips.length * 5, // Total duration
-          thumbnail: generatedFrames[0]?.imageUrl
-        })
-        
-        // Update the final video with the Supabase URL
-        finalVideo.finalVideoUrl = uploadResult.publicUrl
-        console.log('Final video uploaded to Supabase successfully:', uploadResult.publicUrl)
-      } catch (error) {
-        console.error('Error uploading final video to Supabase:', error)
-        // Keep the original URL if upload fails
-      }
-
+      };
+      
       setGeneratedVideo(finalVideo)
       setCurrentStep("video-ready")
+
+      // Upload final merged video to Supabase using uploadMovieToStorage
+      // try {
+      //   const currentSession = localStorage.getItem('currentSession')
+      //   const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
+        
+      //   console.log('Uploading final merged video to Supabase...')
+      //   const uploadResult = await uploadMovieToStorage({
+      //     videoUrl: result.mergedVideoUrl,
+      //     userId: userId,
+      //     filename: `final_video_${finalVideo.id}`,
+      //     duration: completedClips.length * 5, // Total duration
+      //     thumbnail: generatedFrames[0]?.imageUrl
+      //   })
+        
+      //   // Update the final video with the Supabase URL
+      //   finalVideo.finalVideoUrl = uploadResult.publicUrl
+      //   console.log('Final video uploaded to Supabase successfully:', uploadResult.publicUrl)
+      // } catch (error) {
+      //   console.error('Error uploading final video to Supabase:', error)
+      //   // Keep the original URL if upload fails
+      // }
+
+      // setGeneratedVideo(finalVideo)
+      // setCurrentStep("video-ready")
 
       console.log('Video clips merged successfully:', result.mergedVideoUrl)
 
@@ -500,7 +502,7 @@ Mood: ${fullStory.mood}`:
       // Reset button state
       const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Upload Frames to Supabase'
+        uploadButton.textContent = 'Save Frames'
         uploadButton.removeAttribute('disabled')
       }
     }
@@ -609,6 +611,29 @@ Mood: ${fullStory.mood}`:
     }
   }
 
+  const goBack = () => {
+    // Implement your go back logic here
+    switch(currentStep) {
+      case "generating-clips":
+        setCurrentStep("input")
+        setIsGeneratingClips(false)
+        break
+      case "merging-clips":
+        setCurrentStep("clips-ready")
+        setIsMergingClips(false)
+        break
+      case "video-ready":
+        setCurrentStep("clips-ready")
+        break
+      case "input":
+        location.href = "/"
+        break
+      default:
+        setCurrentStep("input")
+        break
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
       {/* Navigation Header */}
@@ -616,6 +641,9 @@ Mood: ${fullStory.mood}`:
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
+              <Button variant="outline" onClick={goBack}>
+                  Go to Back
+               </Button>
               <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
                 AI Video Generator
               </h1>
@@ -836,27 +864,7 @@ Mood: ${fullStory.mood}`:
                               className="px-8"
                             >
                               <Upload className="h-4 w-4 mr-2" />
-                              Upload Frames to Supabase
-                            </Button>
-                            <Button 
-                              onClick={async () => {
-                                try {
-                                  const response = await fetch('/api/test_runway');
-                                  const result = await response.json();
-                                  if (result.status === 'success') {
-                                    alert('Runway API is accessible!');
-                                  } else {
-                                    alert(`Runway API test failed: ${result.error || 'Unknown error'}`);
-                                  }
-                                } catch (error) {
-                                  alert(`Failed to test Runway API: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                                }
-                              }}
-                              variant="outline"
-                              size="sm"
-                              className="px-4"
-                            >
-                              Test Runway API
+                              Save Frames
                             </Button>
                           </div>
                         </>
@@ -1039,20 +1047,18 @@ Mood: ${fullStory.mood}`:
                                   
                                   const systemPrompt = fullStory ? 
                                     `You are creating a video clip for: "${fullStory.title}"
-
-Overall Story: ${fullStory.overallStory}
-
-Style: ${fullStory.style}
-Mood: ${fullStory.mood}`:
+                                    Overall Story: ${fullStory.overallStory}
+                                    Style: ${fullStory.style}
+                                    Mood: ${fullStory.mood}`:
                                       `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
                                   let result : any;
-                                  generateVideoClip({
+                                  const response = generateVideoClip({
                                       startImage: startImageData,
                                       clipIndex: clip.id - 1,
                                       totalClips: videoClips.length,
                                       prompt: sceneStory
-                                    }).then(data => result = data)
-
+                                    })
+                                    result = await response;
                                   // Upload the retry clip to Supabase
                                   try {
                                     const currentSession = localStorage.getItem('currentSession')
@@ -1086,7 +1092,6 @@ Mood: ${fullStory.mood}`:
                                         ...c, 
                                         status: 'completed', 
                                         videoUrl: result.videoUrl,
-                                        optimizedPrompt: result.optimizedPrompt
                                       } : c
                                     ))
                                   }
@@ -1206,6 +1211,7 @@ Mood: ${fullStory.mood}`:
                       <p className="text-xs text-gray-500">
                         {generatedVideo.videoClips.length} clips merged
                       </p>
+                      <video className="h-12 w-12 mx-auto text-gray-400" autoPlay muted loop src={generatedVideo.finalVideoUrl} />
                       {generatedVideo.finalVideoUrl && (
                         <Button
                           variant="outline"
@@ -1236,7 +1242,7 @@ Mood: ${fullStory.mood}`:
                       variant="outline"
                     >
                       <Upload className="h-4 w-4 mr-2" />
-                      Upload to Supabase
+                      Upload to Inventory
                     </Button>
                     <Button variant="outline" onClick={resetGeneration}>
                       Create New Video

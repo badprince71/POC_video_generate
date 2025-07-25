@@ -21,7 +21,6 @@ import {
   ArrowRight,
   Palette,
   Heart,
-  Library,
   Home,
   FileImage,
 } from "lucide-react"
@@ -1059,34 +1058,6 @@ export default function FrameGenerationPage() {
                         <Progress value={storyGenerationProgress} className="w-full h-2" />
                       </div>
                       
-                      {/* <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            storyGenerationStep === 'first-story' ? 'bg-blue-500 animate-pulse' : 
-                            storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
-                          }`}></div>
-                          <span className={`text-xs ${
-                            storyGenerationStep === 'first-story' ? 'text-blue-700' : 
-                            storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
-                          }`}>
-                            Step 1: {storyGenerationStep === 'first-story' ? 'Generating first story...' : 'First story generated ✓'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            storyGenerationStep === 'enhancing' ? 'bg-blue-500 animate-pulse' : 
-                            storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
-                          }`}></div>
-                          <span className={`text-xs ${
-                            storyGenerationStep === 'enhancing' ? 'text-blue-700' : 
-                            storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
-                          }`}>
-                            Step 2: {storyGenerationStep === 'enhancing' ? 'Enhancing story with more detail...' : 
-                            storyGenerationStep === 'complete' ? 'Story enhancement complete ✓' : 'Waiting for first story...'}
-                          </span>
-                        </div>
-                      </div> */}
-                      
                       {/* Progress indicator */}
                       {storyGenerationStep === 'complete' && (
                         <div className="mt-2 pt-2 border-t border-blue-200">
@@ -1220,35 +1191,8 @@ export default function FrameGenerationPage() {
                 ) : currentStep === "frames-ready" ? (
                   <div className="space-y-4">
                     <FrameViewer frames={generatedFrames} />
-                    
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex gap-2">
-                        {/* <Button
-                          onClick={modifyStory}
-                          variant="outline"
-                          size="sm"
-                          disabled={!generatedStory}
-                        >
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Modify Story
-                        </Button> */}
-                        <Button 
-                          onClick={saveAllImages}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Save Images
-                        </Button>
-                        <Button 
-                          id="upload-to-supabase-btn"
-                          onClick={uploadImagesToSupabase}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload to Images
-                        </Button>
                       </div>
                       <Link href="/video-generation" className="flex-1">
                         <Button className="w-full">

@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     // Run ffmpeg command
     console.log('🔄 Running ffmpeg merge...')
     const ffmpegCommand = [
-      'ffmpeg',
+      `ffmpeg`,
       '-f concat',
       '-safe 0',
       `-i "${concatFile}"`,
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
       mergedVideoUrl: dataUrl, // In production, this would be a storage URL
       previewUrl: dataUrl,
       format: outputFormat,
-      duration: videoUrls.length * 10, // You could parse this from ffmpeg output
+      duration: videoUrls.length * 5, // You could parse this from ffmpeg output
       fileSize: videoBuffer.length,
       videoInfo: {
         inputVideos: videoUrls,
