@@ -193,117 +193,111 @@ The story should have a complete narrative arc with setup, development, climax, 
             model: "gpt-4.1",
             messages: [
                 {
-                    role: "system",
-                    content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to take an existing story and enhance it with even more detail, depth, and cinematic quality for a video with ${frameCount} distinct scenes (${Math.floor(30/frameCount)} seconds each).
-
-CRITICAL SAFETY REQUIREMENTS:
-1. **CONTENT SAFETY**: Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.
-2. **NO HARMFUL CONTENT**: Do not generate descriptions involving violence, weapons, dangerous activities, harmful substances, or any content that could cause harm.
-3. **NO INAPPROPRIATE CONTENT**: Avoid any sexual content, nudity, or inappropriate behavior. Keep all content professional and suitable for work environments.
-4. **NO OFFENSIVE LANGUAGE**: Do not use profanity, hate speech, or offensive terms. Use clean, professional language.
-5. **NO ILLEGAL ACTIVITIES**: Do not describe any illegal activities, criminal behavior, or activities that could be considered unlawful.
-6. **RESPECTFUL CONTENT**: Ensure all content is respectful to all individuals, cultures, and communities.
-
-CRITICAL REQUIREMENTS:
-1. **ENHANCE THE EXISTING STORY**: Use the provided first story as your foundation and enhance it with more detail, emotional depth, and cinematic elements.
-2. **MAINTAIN CORE ELEMENTS**: Keep all the core elements, theme, and scenario from the original user prompt and first story.
-3. **ADD CINEMATIC DEPTH**: Enhance each scene with more detailed visual descriptions, emotional nuances, and professional cinematography.
-4. **IMPROVE NARRATIVE FLOW**: Make the transitions between scenes even smoother and more engaging.
-5. **AVOID SPECIFIC APPEARANCE DETAILS**: Do NOT mention specific clothing items, glasses, accessories, or appearance details.
-
-For each scene, provide ENHANCED DETAILED descriptions including:
-1. **Enhanced Scene Overview**: More detailed scenario description with cinematic elements
-2. **Detailed Character Details**: More nuanced positioning, facial expressions, body language, and natural poses
-3. **Rich Environment & Setting**: More detailed background description with atmospheric elements
-4. **Dynamic Action & Movement**: More specific and engaging character actions
-5. **Enhanced Visual Elements**: More detailed props, objects, colors, textures, lighting conditions
-6. **Deep Emotional Context**: More nuanced character emotions, mood, atmosphere
-7. **Professional Camera Perspective**: More detailed camera angle, framing, focus points
-8. **Enhanced Story Integration**: More detailed explanation of narrative progression
-9. **Original Prompt Connection**: More detailed explanation of how this scene implements the original user request
-
-The enhanced story should be:
-- A more detailed and cinematic version of the first story
-- Even more consistent with the core scenario throughout all scenes
-- Richer in environmental and atmospheric details
-- More cohesive with smoother transitions between scenes
-- More authentic and emotionally engaging human moments
-- More directly connected to and expanding upon the original user prompt
-- More appearance-neutral, focusing on actions and emotions
-- Family-friendly and appropriate for all audiences
-
-IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text. Do not wrap your response in \`\`\`json or \`\`\` blocks.
-
-Format your response as pure JSON with this structure:
-{
-  "title": "Enhanced Story Title",
-  "overallStory": "Enhanced comprehensive story summary with more detail and cinematic elements",
-  "scenes": [
-    {
-      "sceneNumber": 1,
-      "timeframe": "0-5 seconds",
-      "description": "ENHANCED EXTREMELY DETAILED scene description with more cinematic elements, character positioning, environment, actions, emotions, visual elements, camera perspective, and story context",
-      "characterAction": "Enhanced specific detailed actions, gestures, expressions, and interactions",
-      "environment": "Enhanced complete setting description with more atmospheric details",
-      "mood": "Enhanced detailed emotional tone, lighting mood, atmospheric elements",
-      "props": "Enhanced comprehensive list of objects, props, visual elements",
-      "storyContext": "Enhanced explanation of how this scene progresses the narrative",
-      "visualDetails": "Enhanced camera angle, framing, focus, color palette, textures",
-      "originalPromptConnection": "Enhanced explanation of how this scene implements the original user prompt"
-    }
-  ]
-}`
+                    "role": "system",
+                    "content": `You are a cinematic director and master storyteller specializing in creating detailed, immersive visual narratives. Your task is to transform the user's prompt into an engaging video story with ${frameCount} distinct scenes, each lasting approximately ${Math.floor(30 / frameCount)} seconds.
+                  
+                    **CRITICAL SAFETY REQUIREMENTS**:
+                    - **Only generate family-friendly, appropriate content**. Avoid anything harmful, violent, or offensive.
+                    - **Use clean, professional language**, avoiding any profanity or inappropriate content.
+                    - **Respect cultural diversity** and ensure the content is suitable for all audiences.
+                  
+                    **ESSENTIAL INSTRUCTIONS**:
+                    - **Strict prompt adherence**: Every scene must directly incorporate the core elements of the original user request.
+                    - **Consistency across scenes**: Ensure all ${frameCount} scenes are variations of the same core scenario.
+                    - **Maintain main features**: The key features, objects, actions, and locations from the original prompt should appear in every scene.
+                    - **Focus on emotions and actions**: Avoid unnecessary details about clothing or appearance.
+                    - **Narrative flow**: Each scene should naturally progress the story, not depict separate scenarios.
+                  
+                    For each scene, provide **extremely detailed descriptions** that include:
+                    - **Scene context**: Directly implement the original prompt’s scenario.
+                    - **Character details**: Describe positioning, facial expressions, and body language (without focusing on appearance specifics).
+                    - **Environment & setting**: Detailed descriptions of the background and location.
+                    - **Action & movement**: Clear actions the character is performing.
+                    - **Visual elements**: Props, lighting, textures, colors relevant to the prompt.
+                    - **Emotional tone**: How the character's emotions and atmosphere develop.
+                    - **Camera perspective**: Suggested angles and focus to enhance visual storytelling.
+                    - **Story integration**: How this scene fits within the overall narrative.
+                  
+                    **Story Style**:
+                    - The story must be cohesive and smoothly transition between scenes.
+                    - The visuals should feel **cinematic**, focusing on rich environmental storytelling, human moments, and emotional depth.
+                    - Always connect each scene to the **core narrative** of the original user request.
+                  
+                    **Return Format**:
+                    - Use **valid JSON** only (no markdown or code blocks). The format should be:
+                    
+                    ***json
+                    {
+                      "title": "Story Title reflecting the original prompt",
+                      "overallStory": "Comprehensive summary",
+                      "scenes": [
+                        {
+                          "sceneNumber": 1,
+                          "timeframe": "0-5 seconds",
+                          "description": "Detailed scene description...",
+                          "characterAction": "Detailed actions...",
+                          "environment": "Complete background...",
+                          "mood": "Emotional tone...",
+                          "props": "List of props...",
+                          "storyContext": "Narrative progression...",
+                          "visualDetails": "Camera angles, color palette...",
+                          "originalPromptConnection": "How this scene connects to the prompt"
+                        }
+                      ]
+                    }
+                      NOTE: Avoid mentioning specific clothing, accessories, or visual elements that might mismatch the user’s photo. Focus on the actions, emotions, and story, not appearance details.
+                `
                 },
                 {
                     role: "user",
                     content: `Take this first generated story and enhance it with even more detail, cinematic quality, and emotional depth:
 
-ORIGINAL USER PROMPT: "${prompt}"
+                            ORIGINAL USER PROMPT: "${prompt}"
 
-FIRST GENERATED STORY:
-${JSON.stringify(firstStoryData, null, 2)}
+                            FIRST GENERATED STORY:
+                            ${JSON.stringify(firstStoryData, null, 2)}
 
-SAFETY REQUIREMENTS:
-- Generate ONLY family-friendly, appropriate content suitable for all audiences
-- Avoid any content that could be considered harmful, violent, inappropriate, or offensive
-- Do not describe violence, weapons, dangerous activities, or harmful substances
-- Avoid any sexual content, nudity, or inappropriate behavior
-- Use clean, professional language without profanity or offensive terms
-- Do not describe any illegal activities or criminal behavior
-- Ensure all content is respectful to all individuals, cultures, and communities
+                            SAFETY REQUIREMENTS:
+                            - Generate ONLY family-friendly, appropriate content suitable for all audiences
+                            - Avoid any content that could be considered harmful, violent, inappropriate, or offensive
+                            - Do not describe violence, weapons, dangerous activities, or harmful substances
+                            - Avoid any sexual content, nudity, or inappropriate behavior
+                            - Use clean, professional language without profanity or offensive terms
+                            - Do not describe any illegal activities or criminal behavior
+                            - Ensure all content is respectful to all individuals, cultures, and communities
 
-CRITICAL INSTRUCTIONS:
-1. **ENHANCE THE EXISTING STORY**: Use the first story as your foundation and make it even more detailed and cinematic.
-2. **MAINTAIN CORE ELEMENTS**: Keep all the core elements, theme, and scenario from the original user prompt and first story.
-3. **ADD CINEMATIC DEPTH**: Enhance each scene with more detailed visual descriptions, emotional nuances, and professional cinematography.
-4. **IMPROVE NARRATIVE FLOW**: Make the transitions between scenes even smoother and more engaging.
-5. **AVOID APPEARANCE DETAILS**: Do NOT mention specific clothing items, glasses, accessories, or appearance details.
+                            CRITICAL INSTRUCTIONS:
+                            1. **ENHANCE THE EXISTING STORY**: Use the first story as your foundation and make it even more detailed and cinematic.
+                            2. **MAINTAIN CORE ELEMENTS**: Keep all the core elements, theme, and scenario from the original user prompt and first story.
+                            3. **ADD CINEMATIC DEPTH**: Enhance each scene with more detailed visual descriptions, emotional nuances, and professional cinematography.
+                            4. **IMPROVE NARRATIVE FLOW**: Make the transitions between scenes even smoother and more engaging.
+                            5. **AVOID APPEARANCE DETAILS**: Do NOT mention specific clothing items, glasses, accessories, or appearance details.
 
-Enhance the ${frameCount} cinematic scenes (${(frameCount-1)*5} seconds each for a ${frameCount *5}-second total) with even more detail including:
+                            Enhance the ${frameCount} cinematic scenes (${(frameCount-1)*5} seconds each for a ${frameCount *5}-second total) with even more detail including:
 
-- **Enhanced scenario context** with more cinematic elements
-- **More detailed character positioning and expressions** with emotional depth
-- **More dynamic action sequences** with engaging movements
-- **Richer environmental descriptions** with atmospheric details
-- **Enhanced visual storytelling elements** with professional cinematography
-- **Deeper emotional progression** with nuanced character development
-- **More detailed cinematic elements** for professional film quality
+                            - **Enhanced scenario context** with more cinematic elements
+                            - **More detailed character positioning and expressions** with emotional depth
+                            - **More dynamic action sequences** with engaging movements
+                            - **Richer environmental descriptions** with atmospheric details
+                            - **Enhanced visual storytelling elements** with professional cinematography
+                            - **Deeper emotional progression** with nuanced character development
+                            - **More detailed cinematic elements** for professional film quality
 
-MANDATORY REQUIREMENT: Each enhanced scene must maintain the direct implementation of the original user prompt: "${prompt}" while adding more detail, depth, and cinematic quality.
+                            MANDATORY REQUIREMENT: Each enhanced scene must maintain the direct implementation of the original user prompt: "${prompt}" while adding more detail, depth, and cinematic quality.
 
-IMPORTANT: Focus on the person's actions, emotions, and the scenario - NOT their clothing, glasses, or specific appearance items. Let the user's actual photo determine their appearance naturally.
+                            IMPORTANT: Focus on the person's actions, emotions, and the scenario - NOT their clothing, glasses, or specific appearance items. Let the user's actual photo determine their appearance naturally.
 
-Make each enhanced scene feel like a professional film still with:
-- Even more authentic human moments and natural expressions
-- Richer environmental storytelling with atmospheric details
-- Clearer narrative progression with enhanced transitions
-- More visually stunning and emotionally engaging content
-- More detailed descriptions that capture every visual element
-- Direct implementation of the original user prompt with enhanced detail
-- More appearance-neutral descriptions focusing on actions and emotions
-- Family-friendly and appropriate content for all audiences
+                            Make each enhanced scene feel like a professional film still with:
+                            - Even more authentic human moments and natural expressions
+                            - Richer environmental storytelling with atmospheric details
+                            - Clearer narrative progression with enhanced transitions
+                            - More visually stunning and emotionally engaging content
+                            - More detailed descriptions that capture every visual element
+                            - Direct implementation of the original user prompt with enhanced detail
+                            - More appearance-neutral descriptions focusing on actions and emotions
+                            - Family-friendly and appropriate content for all audiences
 
-The enhanced story should have an even more complete narrative arc with enhanced setup, development, climax, and resolution, all based on the original user's vision: "${prompt}". Each enhanced scene should be so detailed that a professional cinematographer could immediately understand exactly how to capture it, while staying 100% true to the original user's request and avoiding any specific appearance details that might not match the user's actual photo.`
+                            The enhanced story should have an even more complete narrative arc with enhanced setup, development, climax, and resolution, all based on the original user's vision: "${prompt}". Each enhanced scene should be so detailed that a professional cinematographer could immediately understand exactly how to capture it, while staying 100% true to the original user's request and avoiding any specific appearance details that might not match the user's actual photo.`
                 }
             ],
             max_tokens: 4000,

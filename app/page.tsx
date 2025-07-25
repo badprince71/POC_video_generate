@@ -21,8 +21,8 @@ import {
   ArrowRight,
   Palette,
   Heart,
-  Library,
   Home,
+  FileImage,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -33,9 +33,14 @@ interface VideoFrame {
   imageUrl: string
   description: string
   prompt: string
+  sceneStory?: string // Scene-specific story from the generated story
+  fullStory?: {
+    title: string
+    overallStory: string
+    style: string
+    mood: string
+  } // Full story context including style and mood
 }
-
-
 
 type GenerationStep = "input" | "generating-frames" | "frames-ready"
 
@@ -83,6 +88,95 @@ export default function FrameGenerationPage() {
   const [storyGenerationStep, setStoryGenerationStep] = useState<'idle' | 'first-story' | 'enhancing' | 'complete'>('idle')
   const [storyGenerationProgress, setStoryGenerationProgress] = useState(0)
   const [isEditingStory, setIsEditingStory] = useState(false)
+
+  // Utility function to upload images to cloud storage
+  const uploadImageToCloud = async (imageData: string, frameId: number): Promise<{ imageUrl: string, userId: string }> => {
+    try {
+      const response = await fetch('/api/upload_image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageData: imageData,
+          frameId: frameId
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      return { imageUrl: result.imageUrl, userId: result.userId }
+    } catch (error) {
+      console.error(`Error uploading image for frame ${frameId}:`, error)
+      throw error
+    }
+  }
+
+  // Utility function to save frames to database
+  const saveFramesToDatabase = async (frames: VideoFrame[]) => {
+    try {
+      // Upload images to cloud storage and get URLs
+      const framesWithCloudUrls = await Promise.all(
+        frames.map(async (frame) => {
+          if (frame.imageUrl && frame.imageUrl.startsWith('data:image/')) {
+            // Upload base64 image to cloud storage
+            const { imageUrl, userId } = await uploadImageToCloud(frame.imageUrl, frame.id)
+            return {
+              ...frame,
+              imageUrl: imageUrl,
+              userId: userId
+            }
+          }
+          return frame
+        })
+      )
+
+      // Generate session ID
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      const userId = (framesWithCloudUrls[0] as any)?.userId || `user_${Date.now()}`
+
+      // Save frames to database
+      const response = await fetch('/api/save_frames', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          frames: framesWithCloudUrls,
+          userId: userId,
+          sessionId: sessionId,
+          originalPrompt: prompt,
+          videoDuration: videoDuration,
+          frameCount: frameCount,
+          style: selectedStyle,
+          mood: selectedMood
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      // Save session info to localStorage for video generation page
+      localStorage.setItem('currentSession', JSON.stringify({
+        sessionId: sessionId,
+        userId: userId,
+        frameCount: frameCount
+      }))
+
+      console.log('Frames saved to database successfully')
+      return { sessionId, userId }
+    } catch (error) {
+      console.error('Error saving frames to database:', error)
+      throw error
+    }
+  }
 
   // Style and Mood options
   const styleOptions = ["Realistic", "Artistic", "Cartoon", "Abstract", "Photographic", "Digital Art"]
@@ -145,7 +239,6 @@ export default function FrameGenerationPage() {
       // Step 1: First story generation
       setStoryGenerationStep('first-story')
       console.log("Starting first story generation...")
-      
       const response = await fetch("/api/generate_story", {
         method: "POST",
         headers: {
@@ -264,6 +357,15 @@ export default function FrameGenerationPage() {
             ? generatedStory.enhancedStory.scenes[i].description 
             : getFrameDescription(i),
           prompt: framePrompt,
+          sceneStory: generatedStory && generatedStory.enhancedStory.scenes[i] 
+            ? generatedStory.enhancedStory.scenes[i].description 
+            : undefined,
+          fullStory: generatedStory ? {
+            title: generatedStory.enhancedStory.title,
+            overallStory: generatedStory.enhancedStory.overallStory,
+            style: selectedStyle,
+            mood: selectedMood
+          } : undefined
         }
 
         console.log(`Frame ${i + 1} generated successfully`)
@@ -300,6 +402,15 @@ export default function FrameGenerationPage() {
       // Update state with all frames at once
       setGeneratedFrames(newFrames)
       setFrameGenerationProgress(100)
+      
+      // Save frames to database using utility function
+      try {
+        const { sessionId, userId } = await saveFramesToDatabase(newFrames)
+        console.log(`Frames saved to database successfully. Session: ${sessionId}`)
+      } catch (error) {
+        console.error('Failed to save frames to database:', error)
+        alert('Failed to save frames to database. Video generation may not work properly.')
+      }
       
       console.log(`All ${frameCount} frames generated successfully!`)
       
@@ -373,6 +484,91 @@ export default function FrameGenerationPage() {
     } catch (error) {
       console.error('Error saving images:', error)
       alert('Failed to save images. Please try again.')
+    }
+  }
+
+  const uploadImagesToSupabase = async () => {
+    if (generatedFrames.length === 0) return
+
+    try {
+      // Show loading state
+      const uploadButton = document.getElementById('upload-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Uploading to Supabase...'
+        uploadButton.setAttribute('disabled', 'true')
+      }
+
+      // Upload each frame to Supabase
+      const uploadPromises = generatedFrames.map(async (frame, index) => {
+        const frameNumber = (index + 1).toString().padStart(2, '0')
+        const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
+        
+        // Convert image URL to base64 if it's not already
+        let imageData = frame.imageUrl
+        if (!imageData.startsWith('data:image/')) {
+          // Fetch the image and convert to base64
+          const response = await fetch(imageData)
+          const blob = await response.blob()
+          imageData = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.readAsDataURL(blob)
+          })
+        }
+
+        // Upload to Supabase
+        const uploadResponse = await fetch('/api/upload_image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            imageData: imageData,
+            frameId: frame.id
+          }),
+        })
+
+        const result = await uploadResponse.json()
+        
+        if (result.error) {
+          throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
+        }
+
+        console.log(`Frame ${frame.id} uploaded to Supabase:`, result.imageUrl)
+        return result
+      })
+
+      // Wait for all uploads to complete
+      const results = await Promise.all(uploadPromises)
+      
+      // Update frame URLs with Supabase URLs
+      const updatedFrames = generatedFrames.map((frame, index) => ({
+        ...frame,
+        imageUrl: results[index].imageUrl
+      }))
+      
+      setGeneratedFrames(updatedFrames)
+
+      // Save updated frames to database
+      try {
+        const { sessionId, userId } = await saveFramesToDatabase(updatedFrames)
+        console.log(`Updated frames saved to database. Session: ${sessionId}`)
+      } catch (error) {
+        console.error('Failed to save updated frames to database:', error)
+      }
+
+      alert(`Successfully uploaded ${generatedFrames.length} images to Supabase!`)
+      
+    } catch (error) {
+      console.error('Error uploading images to Supabase:', error)
+      alert(`Failed to upload images to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      // Reset button state
+      const uploadButton = document.getElementById('upload-to-supabase-btn')
+      if (uploadButton) {
+        uploadButton.textContent = 'Upload to Images'
+        uploadButton.removeAttribute('disabled')
+      }
     }
   }
 
@@ -499,9 +695,10 @@ export default function FrameGenerationPage() {
                   <Video className="h-4 w-4" />
                   Video Generation
                 </Link>
-                <Link href="/library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <Library className="h-4 w-4" />
-                  My Library
+                
+                <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <FileImage className="h-4 w-4" />
+                  Media Library
                 </Link>
               </div>
             </div>
@@ -861,34 +1058,6 @@ export default function FrameGenerationPage() {
                         <Progress value={storyGenerationProgress} className="w-full h-2" />
                       </div>
                       
-                      {/* <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            storyGenerationStep === 'first-story' ? 'bg-blue-500 animate-pulse' : 
-                            storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
-                          }`}></div>
-                          <span className={`text-xs ${
-                            storyGenerationStep === 'first-story' ? 'text-blue-700' : 
-                            storyGenerationStep === 'enhancing' || storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
-                          }`}>
-                            Step 1: {storyGenerationStep === 'first-story' ? 'Generating first story...' : 'First story generated ✓'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            storyGenerationStep === 'enhancing' ? 'bg-blue-500 animate-pulse' : 
-                            storyGenerationStep === 'complete' ? 'bg-green-500' : 'bg-gray-300'
-                          }`}></div>
-                          <span className={`text-xs ${
-                            storyGenerationStep === 'enhancing' ? 'text-blue-700' : 
-                            storyGenerationStep === 'complete' ? 'text-green-700' : 'text-gray-500'
-                          }`}>
-                            Step 2: {storyGenerationStep === 'enhancing' ? 'Enhancing story with more detail...' : 
-                            storyGenerationStep === 'complete' ? 'Story enhancement complete ✓' : 'Waiting for first story...'}
-                          </span>
-                        </div>
-                      </div> */}
-                      
                       {/* Progress indicator */}
                       {storyGenerationStep === 'complete' && (
                         <div className="mt-2 pt-2 border-t border-blue-200">
@@ -1022,26 +1191,8 @@ export default function FrameGenerationPage() {
                 ) : currentStep === "frames-ready" ? (
                   <div className="space-y-4">
                     <FrameViewer frames={generatedFrames} />
-                    
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex gap-2">
-                        {/* <Button
-                          onClick={modifyStory}
-                          variant="outline"
-                          size="sm"
-                          disabled={!generatedStory}
-                        >
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Modify Story
-                        </Button> */}
-                        <Button 
-                          onClick={saveAllImages}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Save Images
-                        </Button>
                       </div>
                       <Link href="/video-generation" className="flex-1">
                         <Button className="w-full">
