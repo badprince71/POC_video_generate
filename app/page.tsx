@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { showToast, toastMessages, showError } from "@/lib/utils/toast"
 
 interface VideoFrame {
   id: number
@@ -171,6 +172,7 @@ export default function FrameGenerationPage() {
       }))
 
       console.log('Frames saved to database successfully')
+      showToast.success('Frames saved successfully!')
       return { sessionId, userId }
     } catch (error) {
       console.error('Error saving frames to database:', error)
@@ -257,7 +259,7 @@ export default function FrameGenerationPage() {
 
       if (response.error) {
         console.error("Story API Error:", response.error)
-        alert(`Error: ${response.error}`)
+        showToast.error(`Story generation failed: ${response.error}`)
         clearInterval(progressInterval)
         return
       }
@@ -270,12 +272,13 @@ export default function FrameGenerationPage() {
       setStoryGenerationStep('complete')
       setStoryGenerationProgress(100) // Complete the progress bar
       console.log("Generated story:", response)
+      showToast.success('Story generated successfully!')
       
       // Keep complete status for a moment before hiding
       await new Promise(resolve => setTimeout(resolve, 2000))
     } catch (error) {
       console.error("Error generating story:", error)
-      alert("Failed to generate story")
+      showToast.error("Failed to generate story. Please try again.")
     } finally {
       setIsGeneratingStory(false)
       setStoryGenerationStep('idle')
@@ -409,10 +412,11 @@ export default function FrameGenerationPage() {
         console.log(`Frames saved to database successfully. Session: ${sessionId}`)
       } catch (error) {
         console.error('Failed to save frames to database:', error)
-        alert('Failed to save frames to database. Video generation may not work properly.')
+        showToast.error('Failed to save frames to database. Video generation may not work properly.')
       }
       
       console.log(`All ${frameCount} frames generated successfully!`)
+      showToast.success(`Successfully generated ${frameCount} frames!`)
       
       if (!isGenerationStopped) {
         setCurrentStep("frames-ready")
@@ -423,7 +427,7 @@ export default function FrameGenerationPage() {
       
       // If generation was stopped, don't show error
       if (!isGenerationStopped) {
-        alert(`Error generating frames: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        showToast.error(`Error generating frames: ${error instanceof Error ? error.message : 'Unknown error'}`)
         setCurrentStep("input")
       }
     }
@@ -481,9 +485,10 @@ export default function FrameGenerationPage() {
       }
 
       console.log(`Saved ${generatedFrames.length} frames individually`)
+      showToast.success(`Successfully saved ${generatedFrames.length} frames!`)
     } catch (error) {
       console.error('Error saving images:', error)
-      alert('Failed to save images. Please try again.')
+      showToast.error('Failed to save images. Please try again.')
     }
   }
 
@@ -777,6 +782,55 @@ export default function FrameGenerationPage() {
                   
                   {/* Video Duration and Style/Mood Selection */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    
+                    <div>
+                      <Label htmlFor="style-select" className="flex items-center gap-2">
+                        <Palette className="h-4 w-4" />
+                        Style
+                      </Label>
+                      <input
+                        id="style-select"
+                        value={selectedStyle}
+                        placeholder="e.g., Realistic, Artistic"
+                        onChange={(e) => {
+                          setSelectedStyle(e.target.value)
+                          setGeneratedStory(null) // Clear story when style changes
+                        }}
+                        className="mt-1 w-full px-3 py-2 border rounded-md focus:outline-none border-gray-300 focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={currentStep === "generating-frames"}
+                      >
+                        {/* {styleOptions.map((style) => (
+                          <option key={style} value={style}>
+                            {style}
+                          </option>
+                        ))} */}
+                      </input>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="mood-select" className="flex items-center gap-2">
+                        <Heart className="h-4 w-4" />
+                        Mood
+                      </Label>
+                      <input
+                        id="mood-select"
+                        value={selectedMood}
+                        placeholder="e.g., Vibrant, Calm"
+                        onChange={(e) => {
+                          setSelectedMood(e.target.value)
+                          setGeneratedStory(null) // Clear story when mood changes
+                        }}
+                        className="mt-1 w-full px-3 py-2 border rounded-md focus:outline-none border-gray-300 focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={currentStep === "generating-frames"}
+                      >
+                        {/* {moodOptions.map((mood) => (
+                          <option key={mood} value={mood}>
+                            {mood}
+                          </option>
+                        ))} */}
+                      </input>
+                    </div>
+
                     <div>
                       <Label htmlFor="duration-select" className="flex items-center gap-2">
                         <Video className="h-4 w-4" />
@@ -790,7 +844,7 @@ export default function FrameGenerationPage() {
                           handleVideoDurationChange(duration)
                           setGeneratedStory(null) // Clear story when duration changes
                         }}
-                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
                         disabled={currentStep === "generating-frames"}
                       >
                         {durationOptions.map((duration) => (
@@ -802,52 +856,6 @@ export default function FrameGenerationPage() {
                       <div className="mt-1 text-xs text-gray-500">
                         {frameCount} frames ({videoDuration / frameCount}s per frame)
                       </div>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="style-select" className="flex items-center gap-2">
-                        <Palette className="h-4 w-4" />
-                        Style
-                      </Label>
-                      <select
-                        id="style-select"
-                        value={selectedStyle}
-                        onChange={(e) => {
-                          setSelectedStyle(e.target.value)
-                          setGeneratedStory(null) // Clear story when style changes
-                        }}
-                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        disabled={currentStep === "generating-frames"}
-                      >
-                        {styleOptions.map((style) => (
-                          <option key={style} value={style}>
-                            {style}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="mood-select" className="flex items-center gap-2">
-                        <Heart className="h-4 w-4" />
-                        Mood
-                      </Label>
-                      <select
-                        id="mood-select"
-                        value={selectedMood}
-                        onChange={(e) => {
-                          setSelectedMood(e.target.value)
-                          setGeneratedStory(null) // Clear story when mood changes
-                        }}
-                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                        disabled={currentStep === "generating-frames"}
-                      >
-                        {moodOptions.map((mood) => (
-                          <option key={mood} value={mood}>
-                            {mood}
-                          </option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                   

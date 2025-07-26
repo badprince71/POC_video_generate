@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { concatenateVideos, checkBrowserCompatibility } from '@/lib/utils/video-merge'
+import { showToast } from '@/lib/utils/toast'
 
 export default function TestVideoMergePage() {
   const [compatibility, setCompatibility] = useState<any>(null)
@@ -38,9 +39,11 @@ export default function TestVideoMergePage() {
       reader.readAsDataURL(mergedBlob)
       
       console.log('Video merge test completed successfully')
+      showToast.success('Video merge test completed successfully!')
     } catch (err) {
       console.error('Video merge test failed:', err)
       setError(err instanceof Error ? err.message : 'Unknown error')
+      showToast.error('Video merge test failed. Check console for details.')
     } finally {
       setIsMerging(false)
     }

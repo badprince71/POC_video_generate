@@ -8,6 +8,7 @@ interface GenerateVideoClipParams {
   prompt: string     // Text description of the desired animation
   totalClips: number // Total number of clips to generate
   clipIndex: number // Index of the current clip (0-based)
+  frameAspectRatio: string // Aspect ratio of the video frames
 }
 
 interface GenerateVideoPromptParams {
@@ -139,13 +140,13 @@ console.log("systemPrompt", systemPrompt)
   }
 }
 
-export async function generateVideoClip({ startImage, prompt, clipIndex, totalClips}: GenerateVideoClipParams) {
+export async function generateVideoClip({ startImage, prompt, clipIndex, totalClips, frameAspectRatio}: GenerateVideoClipParams) {
 
     let generatePrompt = prompt;
   if (!process.env.RUNWAYML_API_SECRET) {
     throw new Error("Runway API key is not configured")
   }
-  
+
   try {
     if (generatePrompt.length > 1000) {
       generatePrompt = generatePrompt.substring(0, 997) + "..."
@@ -162,7 +163,7 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
     const imageToVideo = await client.imageToVideo.create({
       model: 'gen4_turbo',
       promptImage: startImage,
-      ratio: '1280:720',
+      ratio: frameAspectRatio,
       promptText: generatePrompt,
       duration: duration as 5 | 10,
       // duration: '20s',
@@ -182,9 +183,9 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
       if (task.status === "SUCCEEDED" && task.output?.[0]) {
         console.log("Video generation completed");
         return {
-            clipIndex,
-            totalClips,
-            videoUrl: task.output[0],
+          clipIndex,
+          totalClips,
+          videoUrl: task.output[0],
           // previewUrl: task.output[0] // Using the same URL for both since preview isn't specified in output
         }
       } else if (task.status === "FAILED") {

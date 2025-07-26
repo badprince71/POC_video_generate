@@ -8,6 +8,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import {
   Video,
@@ -27,6 +28,7 @@ import {
 import { uploadVideo, uploadMovieToStorage } from "@/lib/upload/video_upload"
 import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
 import { concatenateVideos, blobToBase64 } from "@/lib/utils/video-merge"
+import { showToast, toastMessages } from "@/lib/utils/toast"
 
 interface VideoFrame {
   id: number
@@ -73,10 +75,12 @@ export default function VideoGenerationPage() {
   const [videoClips, setVideoClips] = useState<VideoClip[]>([])
   const [clipGenerationProgress, setClipGenerationProgress] = useState(0)
   const [mergeProgress, setMergeProgress] = useState(0)
+  const [frameAspectRatio, setFrameAspectRatio] = useState("16:9")
   const [isGeneratingClips, setIsGeneratingClips] = useState(false)
   const [isMergingClips, setIsMergingClips] = useState(false)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
 
+  const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672"];
   // Load frames from database on component mount
   useEffect(() => {
     const loadFramesFromDatabase = async () => {
@@ -118,6 +122,7 @@ export default function VideoGenerationPage() {
     setIsGeneratingClips(true)
     setCurrentStep("generating-clips")
     setClipGenerationProgress(0)
+    showToast.success('Starting video clip generation...')
 
     // Create clips array - each clip uses a single frame
     const clips: VideoClip[] = []
@@ -171,21 +176,13 @@ Mood: ${fullStory.mood}`:
 
             const response = generateVideoClip({
               startImage: frameImageData,
-              prompt: sceneStory, // Scene-specific story as user prompt
+              prompt: `${sceneStory} ${systemPrompt}`, // Scene-specific story as user prompt
               clipIndex: i,
               totalClips: clips.length,
+              frameAspectRatio: frameAspectRatio
           });
           let videoResult : any;
           response.then(result => videoResult = result)
-          
-          // const result = await response.json()
-
-          // if (result.error) {
-          //   throw new Error(result.error)
-          // }
-
-          // Upload the generated video clip to Supabase immediately (only if not a fallback)
-          // if (!result.fallback) {
             try {
               const currentSession = localStorage.getItem('currentSession')
               const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
@@ -221,27 +218,6 @@ Mood: ${fullStory.mood}`:
                 } : c
               ))
             }
-          // } else {
-          //   // Handle fallback video (don't upload to Supabase)
-          //   console.log(`Clip ${i + 1} is a fallback video, skipping Supabase upload`);
-          //   setVideoClips(prev => prev.map(c => 
-          //     c.id === clip.id ? { 
-          //       ...c, 
-          //       status: 'completed', 
-          //       videoUrl: result.videoUrl,
-          //       optimizedPrompt: result.optimizedPrompt,
-          //       isFallback: true,
-          //       note: result.note
-          //     } : c
-          //   ))
-            
-          //   // Show notification for fallback video
-          //   if (result.note) {
-          //     console.log(`Fallback video note: ${result.note}`);
-          //   }
-          // }
-
-          // console.log(`Clip ${i + 1} generated successfully:`, result.videoUrl)
 
         } catch (error) {
           console.error(`Error generating clip ${i + 1}:`, error)
@@ -281,7 +257,8 @@ Mood: ${fullStory.mood}`:
         setCurrentStep("clips-ready")
       } else {
         // Some clips failed
-        alert(`Generated ${completedClips.length}/${clips.length} clips successfully. Some clips failed to generate.`)
+        showToast.success(`Generated clips successfully.`)
+        // alert(`Generated ${completedClips.length}/${clips.length} clips successfully. Some clips failed to generate.`)
         setCurrentStep("clips-ready")
       }
 
@@ -298,13 +275,14 @@ Mood: ${fullStory.mood}`:
     const completedClips = videoClips.filter(clip => clip.status === 'completed')
     
     if (completedClips.length === 0) {
-      alert('No completed video clips to merge')
+      showToast.error('No completed video clips to merge')
       return
     }
 
     setIsMergingClips(true)
     setCurrentStep("merging-clips")
     setMergeProgress(0)
+    showToast.success('Starting video merging...')
 
     try {
       const clipUrls = completedClips.map(clip => clip.videoUrl)
@@ -347,10 +325,11 @@ Mood: ${fullStory.mood}`:
       setCurrentStep("video-ready")
 
       console.log('Video clips merged successfully using client-side processing')
+      showToast.success('Video clips merged successfully!')
 
     } catch (error) {
       console.error('Error merging video clips:', error)
-      alert('Error merging video clips. Please try again.')
+      showToast.error('Error merging video clips. Please try again.')
       setCurrentStep("clips-ready")
     } finally {
       setIsMergingClips(false)
@@ -820,6 +799,25 @@ Mood: ${fullStory.mood}`:
                           </div>
                           
                           <div className="flex gap-2 justify-center">
+                      <Label htmlFor="aspect-ratio-select" className="flex items-center gap-2">
+                        Video Aspect Ratio
+                      </Label>
+                      <select
+                        id="aspect-ratio-select"
+                        value={frameAspectRatio}
+                        onChange={(e) => {
+                          setFrameAspectRatio(e.target.value)
+                          // Clear story when aspect ratio changes
+                        }}
+                        className="w-50 mr-2 px-8 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        disabled={isGeneratingClips}
+                      >
+                        {frameOptions.map((aspectRatio) => (
+                          <option key={aspectRatio} value={aspectRatio}>
+                            {aspectRatio}
+                          </option>
+                        ))}
+                        </select>
                             <Button 
                               onClick={generateVideoClips}
                               disabled={isGeneratingClips}
@@ -1036,7 +1034,8 @@ Mood: ${fullStory.mood}`:
                                       startImage: startImageData,
                                       clipIndex: clip.id - 1,
                                       totalClips: videoClips.length,
-                                      prompt: sceneStory
+                                      prompt: sceneStory,
+                                      frameAspectRatio: frameAspectRatio
                                     })
                                     result = await response;
                                   // Upload the retry clip to Supabase
@@ -1184,14 +1183,14 @@ Mood: ${fullStory.mood}`:
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-                    <div className="text-center space-y-2">
+                    <video className="w-full h-full" autoPlay muted loop src={generatedVideo.finalVideoUrl} />
+                    {/* <div className="text-center space-y-2">
                       <Video className="h-12 w-12 mx-auto text-gray-400" />
                       <p className="text-sm text-gray-600">Final Merged Video</p>
                       <p className="text-xs text-gray-500">Duration: {generatedVideo.duration}</p>
                       <p className="text-xs text-gray-500">
                         {generatedVideo.videoClips.length} clips merged
                       </p>
-                      <video className="h-72 w-72 mx-auto text-gray-400" autoPlay muted loop src={generatedVideo.finalVideoUrl} />
                       {generatedVideo.finalVideoUrl && (
                         <Button
                           variant="outline"
@@ -1203,7 +1202,7 @@ Mood: ${fullStory.mood}`:
                           Play Final Video
                         </Button>
                       )}
-                    </div>
+                    </div> */}
                   </div>
 
                   <div className="flex gap-4">
@@ -1223,6 +1222,7 @@ Mood: ${fullStory.mood}`:
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       Upload to Inventory
+                      
                     </Button>
                     <Button variant="outline" onClick={resetGeneration}>
                       Create New Video
