@@ -310,16 +310,25 @@ Mood: ${fullStory.mood}`:
       const clipUrls = completedClips.map(clip => clip.videoUrl)
 
       console.log(`Merging ${clipUrls.length} video clips using client-side processing`)
+      console.log('Video URLs:', clipUrls)
 
       // Use client-side video merging
       setMergeProgress(25)
       
-      const mergedBlob = await concatenateVideos(clipUrls)
-      
-      setMergeProgress(75)
-      
-      // Convert blob to base64 data URL
-      const mergedVideoDataUrl = await blobToBase64(mergedBlob)
+      let mergedVideoDataUrl: string
+      try {
+        const mergedBlob = await concatenateVideos(clipUrls)
+        console.log('Video merging completed, blob size:', mergedBlob.size)
+        
+        setMergeProgress(75)
+        
+        // Convert blob to base64 data URL
+        mergedVideoDataUrl = await blobToBase64(mergedBlob)
+        console.log('Converted to base64, data URL length:', mergedVideoDataUrl.length)
+      } catch (mergeError) {
+        console.error('Video merging failed:', mergeError)
+        throw mergeError
+      }
       
       setMergeProgress(100)
 

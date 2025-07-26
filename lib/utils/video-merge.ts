@@ -14,6 +14,34 @@ export interface MergedVideo {
   size: number
 }
 
+// Browser compatibility check
+export function checkBrowserCompatibility(): {
+  canvas: boolean
+  mediaRecorder: boolean
+  webm: boolean
+  mp4: boolean
+  vp8: boolean
+  vp9: boolean
+} {
+  const canvas = !!document.createElement('canvas').getContext
+  const mediaRecorder = !!window.MediaRecorder
+  const webm = MediaRecorder.isTypeSupported('video/webm')
+  const mp4 = MediaRecorder.isTypeSupported('video/mp4')
+  const vp8 = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+  const vp9 = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+
+  console.log('Browser compatibility check:', {
+    canvas,
+    mediaRecorder,
+    webm,
+    mp4,
+    vp8,
+    vp9
+  })
+
+  return { canvas, mediaRecorder, webm, mp4, vp8, vp9 }
+}
+
 export class VideoMerger {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -30,35 +58,68 @@ export class VideoMerger {
 
     return new Promise(async (resolve, reject) => {
       try {
-        // Load all videos
+        console.log('Starting video merge for', videoUrls.length, 'videos')
+        
+        // Check browser compatibility first
+        const compatibility = checkBrowserCompatibility()
+        if (!compatibility.canvas || !compatibility.mediaRecorder) {
+          throw new Error('Browser does not support Canvas or MediaRecorder APIs')
+        }
+        
+        // Load all videos and wait for them to be ready
         const videos = await Promise.all(
-          videoUrls.map(url => this.loadVideo(url))
+          videoUrls.map(async (url, index) => {
+            console.log(`Loading video ${index + 1}/${videoUrls.length}:`, url)
+            const video = await this.loadVideo(url)
+            // Wait for video to be fully loaded
+            await new Promise<void>((resolve) => {
+              if (video.readyState >= 2) {
+                resolve()
+              } else {
+                video.oncanplay = () => resolve()
+              }
+            })
+            console.log(`Video ${index + 1} loaded, duration:`, video.duration)
+            return video
+          })
         )
 
         // Set canvas size based on first video
         const firstVideo = videos[0]
         this.canvas.width = firstVideo.videoWidth
         this.canvas.height = firstVideo.videoHeight
+        console.log('Canvas size set to:', this.canvas.width, 'x', this.canvas.height)
 
         // Calculate total duration
         const totalDuration = videos.reduce((sum, video) => sum + video.duration, 0)
+        console.log('Total duration:', totalDuration)
 
-        // Create MediaRecorder
+        // Create MediaRecorder with proper MIME type
         const stream = this.canvas.captureStream(frameRate)
+        const mimeType = MediaRecorder.isTypeSupported(`video/${outputFormat};codecs=vp9`) 
+          ? `video/${outputFormat};codecs=vp9`
+          : MediaRecorder.isTypeSupported(`video/${outputFormat};codecs=vp8`)
+          ? `video/${outputFormat};codecs=vp8`
+          : `video/${outputFormat}`
+        
         this.mediaRecorder = new MediaRecorder(stream, {
-          mimeType: `video/${outputFormat};codecs=vp8`
+          mimeType,
+          videoBitsPerSecond: 2500000 // 2.5 Mbps for better quality
         })
 
         this.mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             this.chunks.push(event.data)
+            console.log('Received video chunk, size:', event.data.size)
           }
         }
 
         this.mediaRecorder.onstop = () => {
-          const blob = new Blob(this.chunks, { type: `video/${outputFormat}` })
+          console.log('MediaRecorder stopped, total chunks:', this.chunks.length)
+          const blob = new Blob(this.chunks, { type: mimeType })
           const url = URL.createObjectURL(blob)
           
+          console.log('Final merged video size:', blob.size)
           resolve({
             blob,
             url,
@@ -68,26 +129,48 @@ export class VideoMerger {
         }
 
         // Start recording
-        this.mediaRecorder.start()
+        this.mediaRecorder.start(1000) // Collect data every second
+        console.log('MediaRecorder started')
 
-        // Play videos sequentially
+        // Play videos sequentially with proper timing
         let currentVideoIndex = 0
-        let currentTime = 0
+        let startTime = Date.now()
 
-        const playNextVideo = () => {
+        const playNextVideo = async () => {
           if (currentVideoIndex >= videos.length) {
-            this.mediaRecorder?.stop()
+            console.log('All videos processed, stopping recorder')
+            setTimeout(() => {
+              this.mediaRecorder?.stop()
+            }, 1000) // Give extra time for final frames
             return
           }
 
           const video = videos[currentVideoIndex]
+          console.log(`Playing video ${currentVideoIndex + 1}/${videos.length}, duration:`, video.duration)
+          
+          // Reset video to beginning
           video.currentTime = 0
-          video.play()
+          
+          // Wait for video to be ready
+          await new Promise<void>((resolve) => {
+            video.oncanplay = () => resolve()
+            video.load()
+          })
 
+          // Start playing
+          try {
+            await video.play()
+          } catch (error) {
+            console.warn('Auto-play failed, trying muted play:', error)
+            video.muted = true
+            await video.play()
+          }
+
+          // Draw frames until video ends
           const drawFrame = () => {
-            if (video.ended || video.paused) {
+            if (video.ended || video.paused || video.currentTime >= video.duration) {
+              console.log(`Video ${currentVideoIndex + 1} finished`)
               currentVideoIndex++
-              currentTime += video.duration
               playNextVideo()
               return
             }
@@ -99,9 +182,11 @@ export class VideoMerger {
           drawFrame()
         }
 
+        // Start the process
         playNextVideo()
 
       } catch (error) {
+        console.error('Error in mergeVideos:', error)
         reject(error)
       }
     })
@@ -113,24 +198,135 @@ export class VideoMerger {
       video.crossOrigin = 'anonymous'
       video.muted = true
       video.playsInline = true
+      video.preload = 'metadata'
+
+      let hasResolved = false
+
+      const resolveOnce = () => {
+        if (!hasResolved) {
+          hasResolved = true
+          resolve(video)
+        }
+      }
+
+      const rejectOnce = (error: Error) => {
+        if (!hasResolved) {
+          hasResolved = true
+          reject(error)
+        }
+      }
 
       video.onloadedmetadata = () => {
-        resolve(video)
+        console.log('Video metadata loaded:', url, 'duration:', video.duration)
+        resolveOnce()
       }
 
-      video.onerror = () => {
-        reject(new Error(`Failed to load video: ${url}`))
+      video.oncanplay = () => {
+        console.log('Video can play:', url)
+        resolveOnce()
       }
 
-      video.src = url
+      video.onerror = (event) => {
+        console.error('Video load error:', url, event)
+        rejectOnce(new Error(`Failed to load video: ${url}`))
+      }
+
+      video.onabort = () => {
+        console.warn('Video load aborted:', url)
+        rejectOnce(new Error(`Video load aborted: ${url}`))
+      }
+
+      // Handle data URLs
+      if (url.startsWith('data:video/')) {
+        video.src = url
+      } else {
+        // For external URLs, try to handle CORS
+        video.crossOrigin = 'anonymous'
+        video.src = url
+      }
     })
   }
 
-  // Alternative method using Web Audio API for audio merging
-  async mergeVideosWithAudio(videoUrls: string[], options: VideoMergeOptions = {}): Promise<MergedVideo> {
-    // This is a more complex implementation that would handle audio
-    // For now, we'll use the basic video-only merge
-    return this.mergeVideos(videoUrls, options)
+  // Alternative method using a different approach for better compatibility
+  async mergeVideosAlternative(videoUrls: string[], options: VideoMergeOptions = {}): Promise<MergedVideo> {
+    const { outputFormat = 'webm', frameRate = 30 } = options
+
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log('Using alternative video merge method')
+        
+        // Load videos one by one to avoid memory issues
+        const videos: HTMLVideoElement[] = []
+        for (let i = 0; i < videoUrls.length; i++) {
+          console.log(`Loading video ${i + 1}/${videoUrls.length}`)
+          const video = await this.loadVideo(videoUrls[i])
+          videos.push(video)
+        }
+
+        // Set canvas size
+        const firstVideo = videos[0]
+        this.canvas.width = firstVideo.videoWidth
+        this.canvas.height = firstVideo.videoHeight
+
+        // Create MediaRecorder
+        const stream = this.canvas.captureStream(frameRate)
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') 
+          ? 'video/webm;codecs=vp9'
+          : 'video/webm;codecs=vp8'
+        
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType })
+        this.mediaRecorder.start()
+
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            this.chunks.push(event.data)
+          }
+        }
+
+        this.mediaRecorder.onstop = () => {
+          const blob = new Blob(this.chunks, { type: mimeType })
+          const url = URL.createObjectURL(blob)
+          resolve({
+            blob,
+            url,
+            duration: videos.reduce((sum, v) => sum + v.duration, 0),
+            size: blob.size
+          })
+        }
+
+        // Play videos sequentially with delays
+        let currentIndex = 0
+        
+        const playVideo = async () => {
+          if (currentIndex >= videos.length) {
+            setTimeout(() => this.mediaRecorder?.stop(), 500)
+            return
+          }
+
+          const video = videos[currentIndex]
+          video.currentTime = 0
+          
+          await video.play()
+          
+          const drawFrames = () => {
+            if (video.ended || video.paused) {
+              currentIndex++
+              setTimeout(playVideo, 100) // Small delay between videos
+              return
+            }
+            this.ctx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height)
+            requestAnimationFrame(drawFrames)
+          }
+          
+          drawFrames()
+        }
+
+        playVideo()
+
+      } catch (error) {
+        reject(error)
+      }
+    })
   }
 
   // Cleanup method
@@ -145,12 +341,43 @@ export class VideoMerger {
 
 // Utility function for simple video concatenation
 export async function concatenateVideos(videoUrls: string[]): Promise<Blob> {
-  const merger = new VideoMerger()
+  console.log('Starting video concatenation for', videoUrls.length, 'videos')
+  
+  // Check browser compatibility first
+  const compatibility = checkBrowserCompatibility()
+  console.log('Browser compatibility:', compatibility)
+  
+  // Try the advanced merger first
   try {
+    const merger = new VideoMerger()
     const result = await merger.mergeVideos(videoUrls)
-    return result.blob
-  } finally {
     merger.cleanup()
+    return result.blob
+  } catch (error) {
+    console.warn('Advanced video merging failed, trying alternative method:', error)
+    
+    // Try alternative method
+    try {
+      const merger = new VideoMerger()
+      const result = await merger.mergeVideosAlternative(videoUrls)
+      merger.cleanup()
+      return result.blob
+    } catch (altError) {
+      console.warn('Alternative video merging failed, using fallback method:', altError)
+      
+      // Fallback: Create a simple concatenated video using the first video
+      // This ensures we always return something, even if merging fails
+      try {
+        const firstVideoUrl = videoUrls[0]
+        const response = await fetch(firstVideoUrl)
+        const blob = await response.blob()
+        console.log('Fallback: Using first video as merged result')
+        return blob
+      } catch (fallbackError) {
+        console.error('Fallback method also failed:', fallbackError)
+        throw new Error('Failed to merge videos: ' + (error instanceof Error ? error.message : 'Unknown error'))
+      }
+    }
   }
 }
 

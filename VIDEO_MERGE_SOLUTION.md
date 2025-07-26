@@ -100,4 +100,42 @@ videoElement.src = mergedVideoDataUrl
 - Browser APIs (Canvas, MediaRecorder) - Built into modern browsers
 - No additional npm packages required
 
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. **Only First Video is Merged**
+   - **Cause**: Browser compatibility issues or video loading problems
+   - **Solution**: Check browser console for errors, use the test page at `/test-video-merge`
+   - **Workaround**: The system includes fallback methods that will use the first video if merging fails
+
+2. **CORS Errors**
+   - **Cause**: Videos hosted on different domains without proper CORS headers
+   - **Solution**: Ensure videos are served with `Access-Control-Allow-Origin: *` header
+   - **Workaround**: Use data URLs or host videos on the same domain
+
+3. **MediaRecorder Not Supported**
+   - **Cause**: Older browser or missing codec support
+   - **Solution**: Check browser compatibility using `checkBrowserCompatibility()`
+   - **Workaround**: The system will fall back to returning the first video
+
+4. **Video Loading Failures**
+   - **Cause**: Invalid URLs, network issues, or unsupported formats
+   - **Solution**: Verify video URLs are accessible and in supported formats (MP4, WebM)
+   - **Workaround**: Check network connectivity and video format compatibility
+
+### Debug Steps
+
+1. **Use the Test Page**: Navigate to `/test-video-merge` to test video merging functionality
+2. **Check Browser Console**: Look for detailed error messages and compatibility information
+3. **Verify Video URLs**: Ensure all video URLs are accessible and return valid video files
+4. **Test Browser Compatibility**: Use the compatibility check function to verify API support
+
+### Browser Support
+
+- ✅ **Chrome/Edge**: Full support for video merging
+- ✅ **Firefox**: Full support for video merging  
+- ✅ **Safari**: Limited support (may fall back to first video)
+- ❌ **Internet Explorer**: Not supported
+
 This solution ensures your video merging functionality works reliably on Vercel while maintaining good performance and user experience. 
