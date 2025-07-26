@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     // Run ffmpeg command
     console.log('🔄 Running ffmpeg merge...')
     const ffmpegCommand = [
-      `ffmpeg`,
+      `"${ffmpeg}"`,
       '-f concat',
       '-safe 0',
       `-i "${concatFile}"`,
