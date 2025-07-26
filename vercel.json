@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "functions": {
+    "api/merge_video_clips/route.ts": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": ["node_modules/ffmpeg-static/**"]   
+    }
+  },
+  "build": {
+    "env": {
+      "FFMPEG_PATH": "node_modules/ffmpeg-static/ffmpeg"
+    }
+  }
+}
