@@ -4,7 +4,7 @@ import { existsSync } from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import ffmpeg from 'ffmpeg-static'
+import ffmpegPath from 'ffmpeg-static'
 
 const execAsync = promisify(exec)
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     // Run ffmpeg command
     console.log('🔄 Running ffmpeg merge...')
     const ffmpegCommand = [
-      `ffmpeg`,
+      `"${ffmpegPath}"`,
       '-f concat',
       '-safe 0',
       `-i "${concatFile}"`,
