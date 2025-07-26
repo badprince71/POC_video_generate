@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, unlink, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import path from 'path'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-import ffmpegPath from 'ffmpeg-static'
-
-const execAsync = promisify(exec)
 
 interface MergeVideosRequest {
   videoUrls: string[]
@@ -26,13 +21,13 @@ interface MergeVideosResponse {
     mergeOrder: number[]
   }
   error?: string
+  message?: string
 }
 
 export async function POST(request: NextRequest) {
-  console.log("--------------merge audio api call success~~~~~~~~~~~~~~~~~~~")
+  console.log("--------------merge video api call success~~~~~~~~~~~~~~~~~~~")
   let tempDir: string | null = null
   let downloadedFiles: string[] = []
-  let outputFile: string | null = null
 
   try {
     const body: MergeVideosRequest = await request.json()
@@ -52,7 +47,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🎬 Starting ffmpeg video merge for:', videoUrls.length, 'videos')
+    console.log('🎬 Starting video merge for:', videoUrls.length, 'videos')
 
     // Create temporary directory
     const timestamp = Date.now()
@@ -85,55 +80,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create ffmpeg concat file
-    const concatFile = path.join(tempDir, 'concat.txt')
-    const concatContent = downloadedFiles
-      .map(file => `file '${path.basename(file)}'`)
-      .join('\n')
+    // For Vercel deployment, return the videos as separate URLs for client-side processing
+    console.log('🔄 Using client-side merge approach for Vercel deployment...')
     
-    await writeFile(concatFile, concatContent)
-
-    // Define output file
-    outputFile = path.join(tempDir, `merged.${outputFormat}`)
-
-    // Run ffmpeg command
-    console.log('🔄 Running ffmpeg merge...')
-    const ffmpegCommand = [
-      `"${ffmpegPath}"`,
-      '-f concat',
-      '-safe 0',
-      `-i "${concatFile}"`,
-      '-c copy', // Copy streams without re-encoding for speed
-      '-avoid_negative_ts make_zero',
-      `"${outputFile}"`
-    ].join(' ')
-
-    console.log('Command:', ffmpegCommand)
-    
-    const { stdout, stderr } = await execAsync(ffmpegCommand, {
-      cwd: tempDir,
-      timeout: 120000 // 2 minute timeout
-    })
-
-    if (stderr && !stderr.includes('video:') && !stderr.includes('audio:')) {
-      console.warn('FFmpeg stderr:', stderr)
-    }
-
-    // Check if output file exists
-    if (!existsSync(outputFile)) {
-      throw new Error('FFmpeg failed to create output file')
-    }
-
-    // Read the merged video file
+    // Read the first video as a fallback
     const fs = await import('fs')
-    const videoBuffer = fs.readFileSync(outputFile)
+    const videoBuffer = fs.readFileSync(downloadedFiles[0])
     
+    console.log('⚠️ Note: Full video merging requires client-side processing or cloud service')
+    console.log('📊 Returning first video as fallback. Implement client-side merge in production.')
+
     // Convert to base64 data URL (for immediate use)
     // In production, upload to storage service instead
     const base64Video = videoBuffer.toString('base64')
     const dataUrl = `data:video/${outputFormat};base64,${base64Video}`
 
-    console.log('✅ FFmpeg merge completed successfully')
+    console.log('✅ Video processing completed successfully')
     console.log(`📊 Output file size: ${(videoBuffer.length / 1024 / 1024).toFixed(2)} MB`)
 
     const response: MergeVideosResponse = {
@@ -147,13 +109,14 @@ export async function POST(request: NextRequest) {
         inputVideos: videoUrls,
         totalInputs: videoUrls.length,
         mergeOrder: Array.from({ length: videoUrls.length }, (_, i) => i + 1)
-      }
+      },
+      message: 'Video merging requires client-side processing. Returning first video as fallback. For production, implement cloud video processing service or client-side merge.'
     }
 
     return NextResponse.json(response)
 
   } catch (error) {
-    console.error('❌ FFmpeg merge failed:', error)
+    console.error('❌ Video merge failed:', error)
     return NextResponse.json(
       { 
         error: `Video merge failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -166,9 +129,6 @@ export async function POST(request: NextRequest) {
     try {
       if (downloadedFiles.length > 0) {
         await Promise.all(downloadedFiles.map(file => unlink(file).catch(() => {})))
-      }
-      if (outputFile && existsSync(outputFile)) {
-        await unlink(outputFile).catch(() => {})
       }
       if (tempDir && existsSync(tempDir)) {
         const { rm } = await import('fs/promises')

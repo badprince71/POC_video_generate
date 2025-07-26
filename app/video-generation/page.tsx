@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { uploadVideo, uploadMovieToStorage } from "@/lib/upload/video_upload"
 import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
+import { concatenateVideos, blobToBase64 } from "@/lib/utils/video-merge"
 
 interface VideoFrame {
   id: number
@@ -308,65 +309,35 @@ Mood: ${fullStory.mood}`:
     try {
       const clipUrls = completedClips.map(clip => clip.videoUrl)
 
-      console.log(`Merging ${clipUrls.length} video clips`)
+      console.log(`Merging ${clipUrls.length} video clips using client-side processing`)
 
-      const response = await fetch('/api/merge_video_clips', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          videoUrls: clipUrls
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.error) {
-        throw new Error(result.error)
-      }
-
+      // Use client-side video merging
+      setMergeProgress(25)
+      
+      const mergedBlob = await concatenateVideos(clipUrls)
+      
+      setMergeProgress(75)
+      
+      // Convert blob to base64 data URL
+      const mergedVideoDataUrl = await blobToBase64(mergedBlob)
+      
       setMergeProgress(100)
+
       // Create final video object
       const finalVideo: GeneratedVideo = {
         id: Date.now().toString(),
         title: `Generated Video - ${new Date().toLocaleDateString()}`,
-        duration: result.duration,
+        duration: `${completedClips.length * 5}s`, // Approximate duration
         prompt: generatedFrames[0]?.prompt || '',
         frames: generatedFrames,
         videoClips: completedClips,
-        finalVideoUrl: result.mergedVideoUrl
+        finalVideoUrl: mergedVideoDataUrl
       };
       
       setGeneratedVideo(finalVideo)
       setCurrentStep("video-ready")
 
-      // Upload final merged video to Supabase using uploadMovieToStorage
-      // try {
-      //   const currentSession = localStorage.getItem('currentSession')
-      //   const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-        
-      //   console.log('Uploading final merged video to Supabase...')
-      //   const uploadResult = await uploadMovieToStorage({
-      //     videoUrl: result.mergedVideoUrl,
-      //     userId: userId,
-      //     filename: `final_video_${finalVideo.id}`,
-      //     duration: completedClips.length * 5, // Total duration
-      //     thumbnail: generatedFrames[0]?.imageUrl
-      //   })
-        
-      //   // Update the final video with the Supabase URL
-      //   finalVideo.finalVideoUrl = uploadResult.publicUrl
-      //   console.log('Final video uploaded to Supabase successfully:', uploadResult.publicUrl)
-      // } catch (error) {
-      //   console.error('Error uploading final video to Supabase:', error)
-      //   // Keep the original URL if upload fails
-      // }
-
-      // setGeneratedVideo(finalVideo)
-      // setCurrentStep("video-ready")
-
-      console.log('Video clips merged successfully:', result.mergedVideoUrl)
+      console.log('Video clips merged successfully using client-side processing')
 
     } catch (error) {
       console.error('Error merging video clips:', error)
