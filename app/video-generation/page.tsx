@@ -1211,7 +1211,7 @@ Mood: ${fullStory.mood}`:
                       <p className="text-xs text-gray-500">
                         {generatedVideo.videoClips.length} clips merged
                       </p>
-                      <video className="h-12 w-12 mx-auto text-gray-400" autoPlay muted loop src={generatedVideo.finalVideoUrl} />
+                      <video className="h-72 w-72 mx-auto text-gray-400" autoPlay muted loop src={generatedVideo.finalVideoUrl} />
                       {generatedVideo.finalVideoUrl && (
                         <Button
                           variant="outline"
