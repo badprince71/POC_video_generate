@@ -75,12 +75,12 @@ export default function VideoGenerationPage() {
   const [videoClips, setVideoClips] = useState<VideoClip[]>([])
   const [clipGenerationProgress, setClipGenerationProgress] = useState(0)
   const [mergeProgress, setMergeProgress] = useState(0)
-  const [frameAspectRatio, setFrameAspectRatio] = useState("16:9")
+  const [frameAspectRatio, setFrameAspectRatio] = useState("1280:720")
   const [isGeneratingClips, setIsGeneratingClips] = useState(false)
   const [isMergingClips, setIsMergingClips] = useState(false)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
 
-  const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672"];
+  const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"];
   // Load frames from database on component mount
   useEffect(() => {
     const loadFramesFromDatabase = async () => {

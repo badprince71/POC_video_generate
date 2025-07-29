@@ -47,10 +47,24 @@ export async function POST(request: NextRequest) {
             try {
                 if (isFirstFrame) {
                     // First scene: create a realistic photograph from original image
-                    framePrompt = `Create a ${styleMoodSuffix}, high-quality, photorealistic image. Maintain the subject's **identical facial features** (e.g., face shape, eye color, hair style, and all other distinctive traits). ${prompt}. The image should resemble a professional photo shot with natural lighting, realistic colors, and authentic expressions. Use natural skin tones, accurate shadows, and realistic environmental details. **Ensure facial consistency**: maintain the subject's face shape, eyes, nose, mouth, and hair throughout. The setting and pose should change, but **the subject's appearance must remain unchanged**. The image should capture a **complete scene** with a cohesive story, not just a snapshot or frame from a video.`;
+                    framePrompt = `STYLE: ${styleMoodSuffix} high-quality, ultra-realistic photograph
+TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
+LIGHTING: Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+FACIAL CONSISTENCY: Maintain subject's EXACT facial features - face shape, eye color, eye shape, nose structure, lip shape, facial bone structure, hair color and texture
+COMPOSITION: Rule of thirds, professional framing, environmental context
+QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
+SCENE: ${prompt}
+IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
                 } else {
                     // Subsequent scenes: create new realistic photographs from original image
-                    framePrompt = `Create a ${styleMoodSuffix}, high-quality, photorealistic image. Maintain the subject's **identical facial features** (e.g., face shape, eye color, hair style, and all other distinctive traits). ${prompt}. The image should resemble a professional photo shot with natural lighting, realistic colors, and authentic expressions. Use natural skin tones, accurate shadows, and realistic environmental details. **Ensure facial consistency**: maintain the subject's face shape, eyes, nose, mouth, and hair throughout. The setting and pose should change, but **the subject's appearance must remain unchanged**. The image should capture a **complete scene** with a cohesive story, not just a snapshot or frame from a video.`;
+                    framePrompt = `STYLE: ${styleMoodSuffix} high-quality, ultra-realistic photograph  
+TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
+LIGHTING: Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+FACIAL CONSISTENCY: Maintain subject's EXACT facial features - face shape, eye color, eye shape, nose structure, lip shape, facial bone structure, hair color and texture  
+COMPOSITION: Rule of thirds, professional framing, environmental context
+QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
+SCENE: ${prompt}
+IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
                 }
                 
                 response = await openai.images.edit({

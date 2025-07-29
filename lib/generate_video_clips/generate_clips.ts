@@ -141,8 +141,14 @@ console.log("systemPrompt", systemPrompt)
 }
 
 export async function generateVideoClip({ startImage, prompt, clipIndex, totalClips, frameAspectRatio}: GenerateVideoClipParams) {
+  
+  // Validate that frameAspectRatio is one of the supported Runway ratios
+  const validRatios = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"] as const;
+  if (!validRatios.includes(frameAspectRatio as any)) {
+    throw new Error(`Invalid aspect ratio "${frameAspectRatio}". Must be one of: ${validRatios.join(", ")}`);
+  }
 
-    let generatePrompt = prompt;
+  let generatePrompt = prompt;
   if (!process.env.RUNWAYML_API_SECRET) {
     throw new Error("Runway API key is not configured")
   }
@@ -163,7 +169,7 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
     const imageToVideo = await client.imageToVideo.create({
       model: 'gen4_turbo',
       promptImage: startImage,
-      ratio: frameAspectRatio,
+      ratio: frameAspectRatio as "1280:720" | "720:1280" | "1104:832" | "832:1104" | "960:960" | "1584:672" | "1280:768" | "768:1280",
       promptText: generatePrompt,
       duration: duration as 5 | 10,
       // duration: '20s',

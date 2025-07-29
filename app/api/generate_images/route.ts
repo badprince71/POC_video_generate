@@ -87,10 +87,24 @@ export async function POST(request: NextRequest) {
                 let framePrompt: string;
                 if (i === 0) {
                     // First frame: based on original image and prompt
-                    framePrompt = `Create the first image. The subject of the images is the person in the photo. ${prompt}`;
+                    framePrompt = `STYLE: High-quality, ultra-realistic photograph
+TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
+LIGHTING: Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+FACIAL CONSISTENCY: Maintain subject's EXACT facial features from the reference image - face shape, eye color, eye shape, nose structure, lip shape, facial bone structure, hair color and texture
+COMPOSITION: Rule of thirds, professional framing, environmental context
+QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
+SCENE: The subject of the images is the person in the photo. ${prompt}
+IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
                 } else {
                     // Subsequent frames: continue the action from previous frame
-                    framePrompt = `Continue the action from the previous image. ${prompt}`;
+                    framePrompt = `STYLE: High-quality, ultra-realistic photograph, continuing from previous scene
+TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
+LIGHTING: Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+FACIAL CONSISTENCY: Maintain subject's EXACT facial features from previous image - face shape, eye color, eye shape, nose structure, lip shape, facial bone structure, hair color and texture
+COMPOSITION: Rule of thirds, professional framing, environmental context
+QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
+SCENE: Continue the action from the previous image. ${prompt}
+IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
                 }
                 
                 // Generate single image using GPT-4o Vision (gpt-image-1)

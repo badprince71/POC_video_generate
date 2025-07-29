@@ -364,7 +364,16 @@ Original Prompt Connection: ${originalPromptConnection}
             return {
                 frameNumber: index + 1,
                 timeframe: scene.timeframe,
-                prompt: `${fullStoryContext}. Create a cinematic, professional photograph with rich details, perfect lighting, vibrant colors, and authentic human expressions. Make it visually stunning and emotionally engaging. This scene should directly fulfill the original user request: "${prompt}". The image should capture the complete story context and scene details provided above. IMPORTANT: Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.`
+                prompt: `${fullStoryContext}
+
+STYLE: High-quality, ultra-realistic photograph, cinematic composition
+TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
+LIGHTING: Cinematic lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+COMPOSITION: Rule of thirds, professional framing, environmental storytelling
+QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
+MOOD: Visually stunning and emotionally engaging
+SCENE REQUIREMENTS: This scene should directly fulfill the original user request: "${prompt}". The image should capture the complete story context and scene details provided above.
+IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures. Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.`
             };
         });
 
