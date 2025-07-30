@@ -106,7 +106,7 @@ videoElement.src = mergedVideoDataUrl
 
 1. **Only First Video is Merged**
    - **Cause**: Browser compatibility issues or video loading problems
-   - **Solution**: Check browser console for errors, use the test page at `/test-video-merge`
+   - **Solution**: Check browser console for errors and verify browser compatibility
    - **Workaround**: The system includes fallback methods that will use the first video if merging fails
 
 2. **CORS Errors**
@@ -126,10 +126,9 @@ videoElement.src = mergedVideoDataUrl
 
 ### Debug Steps
 
-1. **Use the Test Page**: Navigate to `/test-video-merge` to test video merging functionality
-2. **Check Browser Console**: Look for detailed error messages and compatibility information
-3. **Verify Video URLs**: Ensure all video URLs are accessible and return valid video files
-4. **Test Browser Compatibility**: Use the compatibility check function to verify API support
+1. **Check Browser Console**: Look for detailed error messages and compatibility information
+2. **Verify Video URLs**: Ensure all video URLs are accessible and return valid video files
+3. **Test Browser Compatibility**: Use the compatibility check function to verify API support
 
 ### Browser Support
 
