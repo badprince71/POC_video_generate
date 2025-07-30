@@ -186,11 +186,11 @@ export default function MediaLibraryPage() {
                 Media Library
               </h2>
               <p className="text-lg text-gray-600">
-                Your uploaded images and videos from Supabase storage
+                Your uploaded images and videos from S3 storage
               </p>
-              <p className="text-sm text-gray-500">
+              {/* <p className="text-sm text-gray-500">
                 User ID: {userId}
-              </p>
+              </p> */}
             </div>
             <Button onClick={fetchUserMedia} variant="outline">
               <RefreshCw className="h-4 w-4 mr-2" />

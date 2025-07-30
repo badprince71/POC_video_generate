@@ -93,14 +93,15 @@ export default function FrameGenerationPage() {
   // Utility function to upload images to cloud storage
   const uploadImageToCloud = async (imageData: string, frameId: number): Promise<{ imageUrl: string, userId: string }> => {
     try {
-      const response = await fetch('/api/upload_image', {
+      const response = await fetch('/api/upload_image_s3', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           imageData: imageData,
-          frameId: frameId
+          frameId: frameId,
+          isUserUpload: false // Generated frame goes to reference-frames
         }),
       })
 
@@ -492,18 +493,18 @@ export default function FrameGenerationPage() {
     }
   }
 
-  const uploadImagesToSupabase = async () => {
+  const uploadImagesToS3 = async () => {
     if (generatedFrames.length === 0) return
 
     try {
       // Show loading state
-      const uploadButton = document.getElementById('upload-to-supabase-btn')
+      const uploadButton = document.getElementById('upload-to-s3-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Uploading to Supabase...'
+        uploadButton.textContent = 'Uploading to S3...'
         uploadButton.setAttribute('disabled', 'true')
       }
 
-      // Upload each frame to Supabase
+      // Upload each frame to S3
       const uploadPromises = generatedFrames.map(async (frame, index) => {
         const frameNumber = (index + 1).toString().padStart(2, '0')
         const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
@@ -521,15 +522,16 @@ export default function FrameGenerationPage() {
           })
         }
 
-        // Upload to Supabase
-        const uploadResponse = await fetch('/api/upload_image', {
+        // Upload to S3
+        const uploadResponse = await fetch('/api/upload_image_s3', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             imageData: imageData,
-            frameId: frame.id
+            frameId: frame.id,
+            isUserUpload: false // Generated frame goes to reference-frames
           }),
         })
 
@@ -539,14 +541,14 @@ export default function FrameGenerationPage() {
           throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
         }
 
-        console.log(`Frame ${frame.id} uploaded to Supabase:`, result.imageUrl)
+        console.log(`Frame ${frame.id} uploaded to S3:`, result.imageUrl)
         return result
       })
 
       // Wait for all uploads to complete
       const results = await Promise.all(uploadPromises)
       
-      // Update frame URLs with Supabase URLs
+      // Update frame URLs with S3 URLs
       const updatedFrames = generatedFrames.map((frame, index) => ({
         ...frame,
         imageUrl: results[index].imageUrl
@@ -562,14 +564,14 @@ export default function FrameGenerationPage() {
         console.error('Failed to save updated frames to database:', error)
       }
 
-      alert(`Successfully uploaded ${generatedFrames.length} images to Supabase!`)
+      alert(`Successfully uploaded ${generatedFrames.length} images to S3!`)
       
     } catch (error) {
-      console.error('Error uploading images to Supabase:', error)
-      alert(`Failed to upload images to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Error uploading images to S3:', error)
+      alert(`Failed to upload images to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       // Reset button state
-      const uploadButton = document.getElementById('upload-to-supabase-btn')
+      const uploadButton = document.getElementById('upload-to-s3-btn')
       if (uploadButton) {
         uploadButton.textContent = 'Upload to Images'
         uploadButton.removeAttribute('disabled')

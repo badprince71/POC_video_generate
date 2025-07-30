@@ -25,7 +25,7 @@ import {
   ChevronRight,
   FileImage,
 } from "lucide-react"
-import { uploadVideo, uploadMovieToStorage } from "@/lib/upload/video_upload"
+import { uploadVideo, uploadMovieToS3 as uploadMovieToStorage } from "@/lib/upload/s3_video_upload"
 import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
 import { concatenateVideos, blobToBase64 } from "@/lib/utils/video-merge"
 import { showToast, toastMessages } from "@/lib/utils/toast"
@@ -186,7 +186,7 @@ Mood: ${fullStory.mood}`:
             try {
               const currentSession = localStorage.getItem('currentSession')
               const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-              console.log(`Uploading video clip ${clip.id} to Supabase...`)
+              console.log(`Uploading video clip ${clip.id} to S3...`)
               const videoResult = await response;
               const uploadResult = await uploadMovieToStorage({
                 videoUrl: videoResult.videoUrl,
@@ -397,7 +397,7 @@ Mood: ${fullStory.mood}`:
       // Show loading state
       const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Uploading to Supabase...'
+        uploadButton.textContent = 'Uploading to S3...'
         uploadButton.setAttribute('disabled', 'true')
       }
 
@@ -419,15 +419,16 @@ Mood: ${fullStory.mood}`:
           })
         }
 
-        // Upload to Supabase
-        const uploadResponse = await fetch('/api/upload_image', {
+        // Upload to S3
+        const uploadResponse = await fetch('/api/upload_image_s3', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             imageData: imageData,
-            frameId: frame.id
+            frameId: frame.id,
+            isUserUpload: false // This is a generated frame
           }),
         })
 
@@ -452,11 +453,11 @@ Mood: ${fullStory.mood}`:
       
       setGeneratedFrames(updatedFrames)
 
-      alert(`Successfully uploaded ${generatedFrames.length} frames to Supabase!`)
+      showToast.success(`Successfully uploaded ${generatedFrames.length} frames to Supabase!`)
       
     } catch (error) {
       console.error('Error uploading frames to Supabase:', error)
-      alert(`Failed to upload frames to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      showToast.error(`Failed to upload frames to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       // Reset button state
       const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
@@ -471,7 +472,7 @@ Mood: ${fullStory.mood}`:
     const completedClips = videoClips.filter(clip => clip.status === 'completed')
     
     if (completedClips.length === 0) {
-      alert('No completed video clips to upload')
+      showToast.error('No completed video clips to upload')
       return
     }
 
@@ -479,7 +480,7 @@ Mood: ${fullStory.mood}`:
       // Show loading state
       const uploadButton = document.getElementById('upload-clips-to-supabase-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Uploading Clips to Supabase...'
+        uploadButton.textContent = 'Uploading Clips to S3...'
         uploadButton.setAttribute('disabled', 'true')
       }
 
@@ -489,7 +490,7 @@ Mood: ${fullStory.mood}`:
       // Upload each completed video clip to Supabase
       for (const clip of completedClips) {
         if (clip.videoUrl && !clip.videoUrl.includes('supabase')) {
-          console.log(`Uploading video clip ${clip.id} to Supabase...`)
+          console.log(`Uploading video clip ${clip.id} to S3...`)
           const uploadResult = await uploadMovieToStorage({
             videoUrl: clip.videoUrl,
             userId: userId,
@@ -507,16 +508,16 @@ Mood: ${fullStory.mood}`:
         }
       }
 
-      alert(`Successfully uploaded ${completedClips.length} video clips to Supabase!`)
+      showToast.success(`Successfully uploaded ${completedClips.length} video clips to S3!`)
       
     } catch (error) {
       console.error('Error uploading video clips to Supabase:', error)
-      alert(`Failed to upload video clips to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      showToast.error(`Failed to upload video clips to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       // Reset button state
       const uploadButton = document.getElementById('upload-clips-to-supabase-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Upload Video Clips to Supabase'
+        uploadButton.textContent = 'Upload Video Clips to S3'
         uploadButton.removeAttribute('disabled')
       }
     }
@@ -524,7 +525,7 @@ Mood: ${fullStory.mood}`:
 
   const uploadFinalVideoToSupabase = async () => {
     if (!generatedVideo?.finalVideoUrl) {
-      alert('No final video available to upload')
+      showToast.error('No final video available to upload')
       return
     }
 
@@ -532,14 +533,14 @@ Mood: ${fullStory.mood}`:
       // Show loading state
       const uploadButton = document.getElementById('upload-final-video-to-supabase-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Uploading to Supabase...'
+        uploadButton.textContent = 'Uploading to S3...'
         uploadButton.setAttribute('disabled', 'true')
       }
 
       const currentSession = localStorage.getItem('currentSession')
       const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
       
-      console.log('Uploading final video to Supabase...')
+      console.log('Uploading final video to S3...')
       const uploadResult = await uploadMovieToStorage({
         videoUrl: generatedVideo.finalVideoUrl,
         userId: userId,
@@ -554,17 +555,17 @@ Mood: ${fullStory.mood}`:
         finalVideoUrl: uploadResult.publicUrl
       } : null)
       
-      console.log('Final video uploaded to Supabase successfully:', uploadResult.publicUrl)
-      alert('Final video uploaded to Supabase successfully!')
+      console.log('Final video uploaded to S3 successfully:', uploadResult.publicUrl)
+      showToast.success('Final video uploaded to S3 successfully!')
       
     } catch (error) {
-      console.error('Error uploading final video to Supabase:', error)
-      alert(`Failed to upload final video to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Error uploading final video to S3:', error)
+      showToast.error(`Failed to upload final video to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       // Reset button state
       const uploadButton = document.getElementById('upload-final-video-to-supabase-btn')
       if (uploadButton) {
-        uploadButton.textContent = 'Upload Final Video to Supabase'
+        uploadButton.textContent = 'Upload Final Video to S3'
         uploadButton.removeAttribute('disabled')
       }
     }
@@ -1101,7 +1102,7 @@ Mood: ${fullStory.mood}`:
                 </div>
 
                 <div className="flex gap-4">
-                  <Button 
+                  {/* <Button 
                     onClick={mergeVideoClips}
                     disabled={videoClips.filter(c => c.status === 'completed').length === 0 || isMergingClips}
                     className="flex-1"
@@ -1117,7 +1118,7 @@ Mood: ${fullStory.mood}`:
                         Merge Video Clips
                       </>
                     )}
-                  </Button>
+                  </Button> */}
                   <Button 
                     id="upload-clips-to-supabase-btn"
                     onClick={uploadVideoClipsToSupabase}
@@ -1125,7 +1126,7 @@ Mood: ${fullStory.mood}`:
                     variant="outline"
                   >
                     <Upload className="h-4 w-4 mr-2" />
-                    Upload Clips to Supabase
+                    Upload Clips to S3
                   </Button>
                   <Button variant="outline" onClick={resetGeneration}>
                     Start Over
