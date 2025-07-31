@@ -121,15 +121,20 @@ export default function FrameGenerationPage() {
   // Utility function to save frames to database
   const saveFramesToDatabase = async (frames: VideoFrame[]) => {
     try {
+      // Check if localStorage is available
+      if (typeof window === 'undefined' || !window.localStorage) {
+        throw new Error('localStorage not available in this environment')
+      }
+
       // Save frames with original URLs (no automatic cloud upload)
       const framesWithOriginalUrls = frames.map((frame) => ({
         ...frame,
-        userId: `user_${Date.now()}`
+        userId: 'user' // Using consistent userId as per memory[[memory:4826654]]
       }))
 
       // Generate session ID
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      const userId = framesWithOriginalUrls[0]?.userId || `user_${Date.now()}`
+      const userId = 'user' // Using consistent userId as per memory[[memory:4826654]]
 
       // Save frames to database
       const response = await fetch('/api/save_frames', {
@@ -149,24 +154,57 @@ export default function FrameGenerationPage() {
         }),
       })
 
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      }
+
       const result = await response.json()
       
       if (result.error) {
-        throw new Error(result.error)
+        // Provide specific error messages based on error type
+        let userMessage = 'Failed to save frames to database'
+        if (result.error.includes('Supabase not configured')) {
+          userMessage = 'Database not configured. Please check environment variables.'
+        } else if (result.error.includes('Failed to save session')) {
+          userMessage = 'Unable to create session. Database connection issue.'
+        } else if (result.error.includes('Failed to save frames')) {
+          userMessage = 'Unable to save frame data. Database error.'
+        }
+        throw new Error(`${userMessage}: ${result.error}`)
       }
 
       // Save session info to localStorage for video generation page
-      localStorage.setItem('currentSession', JSON.stringify({
-        sessionId: sessionId,
-        userId: userId,
-        frameCount: frameCount
-      }))
+      try {
+        localStorage.setItem('currentSession', JSON.stringify({
+          sessionId: sessionId,
+          userId: userId,
+          frameCount: frameCount
+        }))
+      } catch (storageError) {
+        console.warn('Could not save session to localStorage:', storageError)
+        // Continue anyway, as database save succeeded
+      }
 
       console.log('Frames saved to database successfully')
       showToast.success('Frames saved successfully!')
       return { sessionId, userId }
     } catch (error) {
       console.error('Error saving frames to database:', error)
+      
+      // Show user-friendly error message
+      if (error instanceof Error) {
+        if (error.message.includes('fetch')) {
+          showToast.error('Network error: Unable to connect to server. Please check your internet connection.')
+        } else if (error.message.includes('Supabase not configured')) {
+          showToast.error('Database not configured. Please set up environment variables.')
+        } else {
+          showToast.error(`Error saving frames: ${error.message}`)
+        }
+      } else {
+        showToast.error('Unknown error occurred while saving frames')
+      }
+      
       throw error
     }
   }

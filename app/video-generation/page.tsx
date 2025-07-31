@@ -105,21 +105,52 @@ export default function VideoGenerationPage() {
   useEffect(() => {
     const loadFramesFromDatabase = async () => {
       try {
-        // Get current session from localStorage
-        const currentSession = localStorage.getItem('currentSession')
-        if (!currentSession) {
-          console.log('No current session found')
+        // Check if localStorage is available (browser environment)
+        if (typeof window === 'undefined' || !window.localStorage) {
+          console.warn('localStorage not available')
           return
         }
 
-        const { sessionId, userId } = JSON.parse(currentSession)
+        // Get current session from localStorage
+        const currentSession = localStorage.getItem('currentSession')
+        if (!currentSession) {
+          console.log('No current session found. Please generate frames first.')
+          // Show user-friendly message
+          return
+        }
+
+        let sessionData
+        try {
+          sessionData = JSON.parse(currentSession)
+        } catch (parseError) {
+          console.error('Invalid session data in localStorage:', parseError)
+          localStorage.removeItem('currentSession') // Clear corrupted data
+          return
+        }
+
+        const { sessionId, userId } = sessionData
+
+        if (!sessionId || !userId) {
+          console.error('Incomplete session data:', sessionData)
+          localStorage.removeItem('currentSession') // Clear incomplete data
+          return
+        }
         
-        // Fetch frames from database
+        // Fetch frames from database with better error handling  
         const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        
         const result = await response.json()
 
         if (result.error) {
-          console.error('Error fetching frames from database:', result.error)
+          console.error('Database error fetching frames:', result.error)
+          // Check if it's a configuration issue
+          if (result.error.includes('Supabase not configured') || result.error.includes('not found')) {
+            console.error('Database configuration issue. Please check environment variables.')
+          }
           return
         }
 
@@ -128,10 +159,14 @@ export default function VideoGenerationPage() {
           setCurrentStep("input")
           console.log(`Loaded ${result.frames.length} frames from database for session ${sessionId}`)
         } else {
-          console.log('No frames found in database')
+          console.log('No frames found in database for this session')
         }
       } catch (error) {
         console.error('Error loading frames from database:', error)
+        // Handle network errors or other issues
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          console.error('Network error: Unable to connect to database API')
+        }
       }
     }
 
