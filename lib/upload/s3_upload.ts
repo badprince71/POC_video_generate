@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // AWS S3 Configuration - Use environment variables directly for server-side code
@@ -43,6 +43,25 @@ interface UploadVideoToS3Params {
 interface S3UploadResult {
   publicUrl: string;
   key: string;
+}
+
+export interface S3VideoFrame {
+  key: string;
+  publicUrl: string;
+  name: string;
+  lastModified?: Date;
+  size?: number;
+}
+
+interface GetFrameResult {
+  data?: Buffer;
+  contentType?: string;
+  error?: string;
+}
+
+interface ListFramesResult {
+  frames: S3VideoFrame[];
+  error?: string;
 }
 
 /**
@@ -231,6 +250,111 @@ export async function getSignedUrlFromS3(key: string, expiresIn: number = 3600):
   } catch (error) {
     console.error('Error generating signed URL:', error);
     throw new Error(`Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get a frame (image) from S3 by key
+ */
+export async function getFrameFromS3(key: string): Promise<GetFrameResult> {
+  try {
+    console.log(`Getting frame from S3: ${key}`);
+    
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key
+    });
+
+    const response = await s3Client.send(command);
+    
+    if (!response.Body) {
+      return { error: 'No data returned from S3' };
+    }
+
+    // Convert stream to buffer
+    const chunks: Uint8Array[] = [];
+    const reader = response.Body.transformToWebStream().getReader();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    
+    const buffer = Buffer.concat(chunks);
+    
+    console.log(`✓ Successfully retrieved frame from S3: ${key} (${buffer.length} bytes)`);
+    
+    return {
+      data: buffer,
+      contentType: response.ContentType || 'image/png'
+    };
+  } catch (error) {
+    console.error('Error getting frame from S3:', error);
+    return { 
+      error: error instanceof Error ? error.message : 'Failed to get frame from S3' 
+    };
+  }
+}
+
+/**
+ * List all frames for a user from S3
+ */
+export async function listUserFramesFromS3(userId: string): Promise<ListFramesResult> {
+  try {
+    console.log(`Listing frames for user: ${userId}`);
+    
+    // Look in both reference-frames and user-uploads folders
+    const folders = ['reference-frames', 'user-uploads'];
+    const allFrames: S3VideoFrame[] = [];
+    
+    for (const folder of folders) {
+      const prefix = `${folder}/${userId}/`;
+      
+      const command = new ListObjectsV2Command({
+        Bucket: BUCKET_NAME,
+        Prefix: prefix,
+        MaxKeys: 1000 // Adjust as needed
+      });
+
+      const response = await s3Client.send(command);
+      
+      if (response.Contents) {
+        const frames = response.Contents
+          .filter(obj => obj.Key && obj.Key !== prefix) // Exclude folder itself
+          .map(obj => {
+            const key = obj.Key!;
+            const fileName = key.split('/').pop() || key;
+            const publicUrl = `https://${BUCKET_NAME}.s3.us-east-1.amazonaws.com/${key}`;
+            
+            return {
+              key,
+              publicUrl,
+              name: fileName,
+              lastModified: obj.LastModified,
+              size: obj.Size
+            };
+          });
+        
+        allFrames.push(...frames);
+      }
+    }
+    
+    // Sort by last modified date (newest first)
+    allFrames.sort((a, b) => {
+      if (!a.lastModified || !b.lastModified) return 0;
+      return b.lastModified.getTime() - a.lastModified.getTime();
+    });
+    
+    console.log(`✓ Found ${allFrames.length} frames for user ${userId}`);
+    
+    return { frames: allFrames };
+  } catch (error) {
+    console.error('Error listing user frames from S3:', error);
+    return { 
+      frames: [], 
+      error: error instanceof Error ? error.message : 'Failed to list user frames from S3' 
+    };
   }
 }
 

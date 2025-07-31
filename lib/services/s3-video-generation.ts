@@ -1,5 +1,3 @@
-"use server"
-
 import { listUserFramesFromS3 } from '@/lib/upload/s3_upload'
 import { generateVideoClip, uploadVideo, uploadMovieToStorage } from '@/lib/generate_video_clips/generate_clips'
 
