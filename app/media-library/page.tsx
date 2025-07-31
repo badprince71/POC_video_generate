@@ -441,7 +441,7 @@ export default function MediaLibraryPage() {
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -464,7 +464,7 @@ export default function MediaLibraryPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            {/* <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Grid3X3 className="h-8 w-8 text-purple-600" />
@@ -474,8 +474,8 @@ export default function MediaLibraryPage() {
                   </div>
                 </div>
               </CardContent>
-            </Card>
-            <Card>
+            </Card> */}
+            {/* <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Clock className="h-8 w-8 text-orange-600" />
@@ -487,12 +487,12 @@ export default function MediaLibraryPage() {
                   </div>
                 </div>
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
 
           {/* Media Tabs */}
           <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="images" className="flex items-center gap-2">
                 <FileImage className="h-4 w-4" />
                 Images ({images.length})
@@ -501,10 +501,10 @@ export default function MediaLibraryPage() {
                 <FileVideo className="h-4 w-4" />
                 Videos ({videos.length})
               </TabsTrigger>
-              <TabsTrigger value="sessions" className="flex items-center gap-2">
+              {/* <TabsTrigger value="sessions" className="flex items-center gap-2">
                 <Grid3X3 className="h-4 w-4" />
                 Sessions ({sessions.length})
-              </TabsTrigger>
+              </TabsTrigger> */}
             </TabsList>
 
             <TabsContent value="images" className="space-y-4">
@@ -619,7 +619,7 @@ export default function MediaLibraryPage() {
                             className="w-full h-full object-cover"
                             preload="metadata"
                           />
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
+                          <div className="absolute inset-0 bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
                               <Button
                                 size="sm"
@@ -658,7 +658,7 @@ export default function MediaLibraryPage() {
                 </div>
               )}
             </TabsContent>
-            <TabsContent value="sessions" className="space-y-4">
+            {/* <TabsContent value="sessions" className="space-y-4">
               {sessions.length === 0 ? (
                 <Card>
                   <CardContent className="p-12 text-center">
@@ -713,7 +713,7 @@ export default function MediaLibraryPage() {
                   ))}
                 </div>
               )}
-            </TabsContent>
+            </TabsContent> */}
           </Tabs>
 
           {/* Image/Video Modal */}

@@ -24,6 +24,10 @@ import {
   ChevronLeft,
   ChevronRight,
   FileImage,
+  Trash2,
+  Eye,
+  RefreshCw,
+  UploadIcon,
 } from "lucide-react"
 import { uploadVideo, uploadMovieToS3 as uploadMovieToStorage } from "@/lib/upload/s3_video_upload"
 import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
@@ -66,6 +70,17 @@ interface GeneratedVideo {
   finalVideoUrl?: string
 }
 
+interface S3VideoClip {
+  id: string
+  name: string
+  url: string
+  downloadUrl?: string
+  size?: number
+  created_at?: string
+  updated_at?: string
+  key: string
+}
+
 type VideoGenerationStep = "input" | "generating-clips" | "clips-ready" | "merging-clips" | "video-ready"
 
 export default function VideoGenerationPage() {
@@ -79,6 +94,11 @@ export default function VideoGenerationPage() {
   const [isGeneratingClips, setIsGeneratingClips] = useState(false)
   const [isMergingClips, setIsMergingClips] = useState(false)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
+  
+  // S3 Video Clips Management State
+  const [s3VideoClips, setS3VideoClips] = useState<S3VideoClip[]>([])
+  const [loadingS3Clips, setLoadingS3Clips] = useState(false)
+  const [uploadingClip, setUploadingClip] = useState(false)
 
   const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"];
   // Load frames from database on component mount
@@ -95,7 +115,7 @@ export default function VideoGenerationPage() {
         const { sessionId, userId } = JSON.parse(currentSession)
         
         // Fetch frames from database
-        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=${userId}`)
+        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`)
         const result = await response.json()
 
         if (result.error) {
@@ -117,6 +137,152 @@ export default function VideoGenerationPage() {
 
     loadFramesFromDatabase()
   }, [])
+
+  // Load S3 video clips when component mounts and when clips-ready step is reached
+  useEffect(() => {
+    if (currentStep === "clips-ready") {
+      fetchS3VideoClips()
+    }
+  }, [currentStep])
+
+  // S3 Video Clips Management Functions
+  const fetchS3VideoClips = async () => {
+    setLoadingS3Clips(true)
+    try {
+      const userId = 'user' // Fixed userId for video clips
+      
+      const response = await fetch(`/api/get_user_media?userId=${userId}`)
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch video clips')
+      }
+
+      // Filter only video clips from the video-clips folder
+      const videoClipsFromS3 = result.videos.filter((video: any) => 
+        video.folder === 'video-clips'
+      )
+      
+      setS3VideoClips(videoClipsFromS3)
+      console.log(`Loaded ${videoClipsFromS3.length} video clips from S3`)
+    } catch (error) {
+      console.error('Error fetching S3 video clips:', error)
+      showToast.error(`Failed to fetch video clips: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setLoadingS3Clips(false)
+    }
+  }
+
+  const uploadVideoClip = async (file: File) => {
+    setUploadingClip(true)
+    try {
+      const userId = 'user' // Fixed userId for video clips
+      
+      // Create FormData for upload
+      const formData = new FormData()
+      formData.append('video', file)
+      formData.append('userId', userId)
+      formData.append('filename', file.name)
+
+      const response = await fetch('/api/upload_video_s3', {
+        method: 'POST',
+        body: formData
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to upload video clip')
+      }
+
+      showToast.success(`Successfully uploaded ${file.name}`)
+      
+      // Refresh the clips list
+      await fetchS3VideoClips()
+      
+    } catch (error) {
+      console.error('Error uploading video clip:', error)
+      showToast.error(`Failed to upload video clip: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setUploadingClip(false)
+    }
+  }
+
+  const handleVideoUpload = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'video/mp4,video/*'
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) {
+        uploadVideoClip(file)
+      }
+    }
+    input.click()
+  }
+
+  const downloadVideoClip = async (clip: S3VideoClip) => {
+    try {
+      // Use the downloadUrl if available, otherwise generate a new one
+      let downloadUrl = clip.downloadUrl
+      
+      if (!downloadUrl) {
+        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(clip.key)}&download=true`)
+        const result = await response.json()
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to generate download URL')
+        }
+        
+        downloadUrl = result.url
+      }
+
+      // Create download link
+      const link = document.createElement('a')
+      link.href = downloadUrl || ''
+      link.download = clip.name
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      console.log(`Downloaded: ${clip.name}`)
+      showToast.success(`Downloaded ${clip.name}`)
+    } catch (error) {
+      console.error('Error downloading video clip:', error)
+      showToast.error(`Failed to download ${clip.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const deleteVideoClip = async (clip: S3VideoClip) => {
+    if (!confirm(`Are you sure you want to delete ${clip.name}?\n\nThis action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const userId = 'user' // Fixed userId for video clips
+      
+      const response = await fetch(`/api/delete_media?key=${encodeURIComponent(clip.key)}&userId=${userId}`, {
+        method: 'DELETE'
+      })
+      
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete video clip')
+      }
+      
+      // Remove the clip from the local state
+      setS3VideoClips(prev => prev.filter(c => c.id !== clip.id))
+      
+      showToast.success(`Successfully deleted ${clip.name}`)
+      console.log(`Deleted: ${clip.name}`)
+      
+    } catch (error) {
+      console.error('Error deleting video clip:', error)
+      showToast.error(`Failed to delete ${clip.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
 
   const generateVideoClips = async () => {
     setIsGeneratingClips(true)
@@ -467,7 +633,7 @@ Mood: ${fullStory.mood}`:
           console.log(`Uploading video clip ${clip.id} to S3...`)
           const uploadResult = await uploadMovieToStorage({
             videoUrl: clip.videoUrl,
-            userId: userId,
+            userId: 'user',
             filename: `video_clip_${clip.id}_${Date.now()}`,
             duration: 5, // Each clip is 5 seconds
             thumbnail: generatedFrames[clip.startFrame]?.imageUrl
@@ -517,7 +683,7 @@ Mood: ${fullStory.mood}`:
       console.log('Uploading final video to S3...')
       const uploadResult = await uploadMovieToStorage({
         videoUrl: generatedVideo.finalVideoUrl,
-        userId: userId,
+        userId: 'user',
         filename: `final_video_${generatedVideo.id}_${Date.now()}`,
         duration: generatedVideo.videoClips.length * 5, // Total duration
         thumbnail: generatedVideo.frames[0]?.imageUrl
@@ -567,6 +733,174 @@ Mood: ${fullStory.mood}`:
         break
     }
   }
+
+  // Helper function to format file sizes
+  // const formatFileSize = (bytes?: number) => {
+  //   if (!bytes) return 'Unknown'
+  //   const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  //   const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  //   return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
+  // }
+
+  // // Helper function to format dates
+  // const formatDate = (dateString?: string) => {
+  //   if (!dateString) return 'Unknown'
+  //   return new Date(dateString).toLocaleDateString('en-US', {
+  //     year: 'numeric',
+  //     month: 'short',
+  //     day: 'numeric',
+  //     hour: '2-digit',
+  //     minute: '2-digit'
+  //   })
+  // }
+
+  // // Video Clips Manager Component
+  // const VideoClipsManager = () => (
+  //   <Card className="mt-6">
+  //     <CardHeader>
+  //       <div className="flex items-center justify-between">
+  //         <div>
+  //           <CardTitle className="flex items-center gap-2">
+  //             <Video className="h-5 w-5" />
+  //             Video Clips Library
+  //           </CardTitle>
+  //           <CardDescription>
+  //             Manage your video clips stored in S3 bucket (video-clips/user/)
+  //           </CardDescription>
+  //         </div>
+  //         <div className="flex gap-2">
+  //           <Button
+  //             onClick={fetchS3VideoClips}
+  //             variant="outline"
+  //             size="sm"
+  //             disabled={loadingS3Clips}
+  //           >
+  //             <RefreshCw className={`h-4 w-4 mr-2 ${loadingS3Clips ? 'animate-spin' : ''}`} />
+  //             Refresh
+  //           </Button>
+  //           <Button
+  //             onClick={handleVideoUpload}
+  //             disabled={uploadingClip}
+  //             size="sm"
+  //           >
+  //             {uploadingClip ? (
+  //               <>
+  //                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+  //                 Uploading...
+  //               </>
+  //             ) : (
+  //               <>
+  //                 <UploadIcon className="h-4 w-4 mr-2" />
+  //                 Upload Clip
+  //               </>
+  //             )}
+  //           </Button>
+  //         </div>
+  //       </div>
+  //     </CardHeader>
+  //     <CardContent>
+  //       {loadingS3Clips ? (
+  //         <div className="flex items-center justify-center py-8">
+  //           <div className="text-center space-y-2">
+  //             <Loader2 className="h-6 w-6 mx-auto animate-spin text-blue-600" />
+  //             <p className="text-sm text-gray-600">Loading video clips...</p>
+  //           </div>
+  //         </div>
+  //       ) : s3VideoClips.length === 0 ? (
+  //         <div className="text-center py-8">
+  //           <Video className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+  //           <h3 className="text-lg font-semibold text-gray-900 mb-2">
+  //             No video clips found
+  //           </h3>
+  //           <p className="text-gray-600 mb-4">
+  //             Upload video clips to see them here.
+  //           </p>
+  //           <Button onClick={handleVideoUpload} disabled={uploadingClip}>
+  //             <UploadIcon className="h-4 w-4 mr-2" />
+  //             Upload Your First Clip
+  //           </Button>
+  //         </div>
+  //       ) : (
+  //         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  //           {s3VideoClips.map((clip) => (
+  //             <Card key={clip.id} className="group hover:shadow-lg transition-all duration-200">
+  //               <CardContent className="p-4">
+  //                 <div className="relative aspect-video mb-3 bg-gray-100 rounded-lg overflow-hidden">
+  //                   <video
+  //                     src={clip.url}
+  //                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+  //                     preload="metadata"
+  //                     muted
+  //                     onError={(e) => {
+  //                       // Hide video and show fallback if video fails to load
+  //                       e.currentTarget.style.display = 'none'
+  //                       const fallback = e.currentTarget.nextElementSibling as HTMLElement
+  //                       if (fallback) fallback.style.display = 'flex'
+  //                     }}
+  //                   />
+  //                   {/* Fallback div - hidden by default, shown if video fails */}
+  //                   <div 
+  //                     className="absolute inset-0 w-full h-full flex items-center justify-center bg-gray-200 transition-colors"
+  //                     style={{ display: 'none' }}
+  //                   >
+  //                     <div className="text-center">
+  //                       <Play className="h-8 w-8 mx-auto text-blue-600 mb-2" />
+  //                       <p className="text-xs text-gray-600">Click to preview</p>
+  //                     </div>
+  //                   </div>
+  //                   {/* Play overlay icon */}
+  //                   <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200">
+  //                     <Play className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+  //                   </div>
+  //                 </div>
+                  
+  //                 <div className="space-y-2">
+  //                   <h3 className="font-medium text-sm text-gray-900 truncate" title={clip.name}>
+  //                     {clip.name}
+  //                   </h3>
+                    
+  //                   <div className="flex items-center justify-between text-xs text-gray-500">
+  //                     <span>{formatFileSize(clip.size)}</span>
+  //                     <span>{formatDate(clip.created_at)}</span>
+  //                   </div>
+                    
+  //                   <div className="flex gap-1">
+  //                     <Button
+  //                       size="sm"
+  //                       variant="outline"
+  //                       className="flex-1 text-xs"
+  //                       onClick={() => window.open(clip.url, '_blank')}
+  //                     >
+  //                       <Eye className="h-3 w-3 mr-1" />
+  //                       View
+  //                     </Button>
+  //                     <Button
+  //                       size="sm"
+  //                       variant="outline"
+  //                       className="flex-1 text-xs"
+  //                       onClick={() => downloadVideoClip(clip)}
+  //                     >
+  //                       <Download className="h-3 w-3 mr-1" />
+  //                       Download
+  //                     </Button>
+  //                     <Button
+  //                       size="sm"
+  //                       variant="destructive"
+  //                       className="text-xs"
+  //                       onClick={() => deleteVideoClip(clip)}
+  //                     >
+  //                       <Trash2 className="h-3 w-3" />
+  //                     </Button>
+  //                   </div>
+  //                 </div>
+  //               </CardContent>
+  //             </Card>
+  //           ))}
+  //         </div>
+  //       )}
+  //     </CardContent>
+  //   </Card>
+  // )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
@@ -954,20 +1288,47 @@ Mood: ${fullStory.mood}`:
                            clip.status === 'failed' ? '✗ Failed' : 'Pending'}
                         </Badge>
                       </div>
+                      
+                      {/* Preview Image */}
+                      {generatedFrames[clip.startFrame]?.imageUrl && (
+                        <div className="mb-3">
+                          <img 
+                            src={generatedFrames[clip.startFrame].imageUrl} 
+                            alt={`Preview of Clip ${clip.id}`}
+                            className="w-full object-cover rounded-md border"
+                          />
+                        </div>
+                      )}
+                      
                       <p className="text-xs text-gray-600 mb-2">
                         Frame {clip.startFrame + 1}
                       </p>
                       {clip.status === 'completed' && (
-                        <div className="space-y-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(clip.videoUrl, '_blank')}
-                            className="w-full"
-                          >
-                            <Play className="h-3 w-3 mr-1" />
-                            View Clip
-                          </Button>
+                        <div className="space-y-2">
+                          {/* Three action buttons in a row */}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(clip.videoUrl, '_blank')}
+                              className="flex-1 h-8"
+                            >
+                              <Play className="h-3 w-3" />
+                            </Button>
+                            
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete clip ${clip.id}?`)) {
+                                  setVideoClips(prev => prev.filter(c => c.id !== clip.id))
+                                }
+                              }}
+                              className="flex-1 h-8"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                           {clip.isFallback && (
                             <div className="text-xs text-amber-600 bg-amber-50 p-1 rounded text-center">
                               ⚠️ Fallback Video
@@ -1021,7 +1382,7 @@ Mood: ${fullStory.mood}`:
                                     console.log(`Uploading retry video clip ${clip.id} to Supabase...`)
                                     const uploadResult = await uploadMovieToStorage({
                                       videoUrl: result.videoUrl,
-                                      userId: userId,
+                                      userId: 'user',
                                       filename: `video_clip_${clip.id}_retry_${Date.now()}`,
                                       duration: 5,
                                       thumbnail: generatedFrames[clip.startFrame]?.imageUrl
@@ -1106,6 +1467,9 @@ Mood: ${fullStory.mood}`:
                     Start Over
                   </Button>
                 </div>
+
+                {/* Video Clips Library Section */}
+                {/* <VideoClipsManager /> */}
               </CardContent>
             </Card>
           )}
