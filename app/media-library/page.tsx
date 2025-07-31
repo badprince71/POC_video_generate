@@ -32,10 +32,13 @@ interface MediaItem {
   id: string
   name: string
   url: string
+  downloadUrl?: string
   size?: number
   created_at?: string
   updated_at?: string
   type: 'image' | 'video'
+  folder?: 'reference-frames' | 'user-uploads' | 'video-clips'
+  key: string
 }
 
 interface SessionData {
@@ -61,26 +64,43 @@ export default function MediaLibraryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedTab, setSelectedTab] = useState('images')
+  const [organizationMode, setOrganizationMode] = useState<'type' | 'folder'>('type')
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null)
+  const [viewModalOpen, setViewModalOpen] = useState(false)
+  const [viewModalItem, setViewModalItem] = useState<MediaItem | null>(null)
 
   // Get userId from environment variable (you'll need to set this in your .env.local)
-  const userId : string = process.env.USER_ID || 'kylesmith010701';
+  const userId : string = process.env.USER_ID || 'user';
+
+  // Group media by folder
+  const groupedByFolder = {
+    'reference-frames': [...images, ...videos].filter(item => item.folder === 'reference-frames'),
+    'user-uploads': [...images, ...videos].filter(item => item.folder === 'user-uploads'),
+    'video-clips': [...images, ...videos].filter(item => item.folder === 'video-clips'),
+  }
 
   const fetchUserMedia = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/get_user_media?userId=${userId}`)
+      const response = await fetch(`/api/get_user_media?userId=${userId}&includeStats=true`)
       const result = await response.json()
 
-      if (result.error) {
-        throw new Error(result.error)
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch media')
       }
 
       setImages(result.images || [])
       setVideos(result.videos || [])
-      setSessions(result.sessions || [])
+      // Note: Sessions are no longer fetched from Supabase, but you could integrate with a database if needed
+      setSessions([])
+      
+      console.log('Media fetched:', {
+        images: result.images?.length || 0,
+        videos: result.videos?.length || 0,
+        total: result.count?.total || 0
+      })
     } catch (error) {
       console.error('Error fetching user media:', error)
       setError(error instanceof Error ? error.message : 'Failed to fetch media')
@@ -111,29 +131,236 @@ export default function MediaLibraryPage() {
     })
   }
 
-  const downloadFile = (url: string, filename: string) => {
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const downloadFile = async (item: MediaItem) => {
+    try {
+      // Use the downloadUrl if available, otherwise generate a new one
+      let downloadUrl = item.downloadUrl
+      
+      if (!downloadUrl) {
+        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}&download=true`)
+        const result = await response.json()
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to generate download URL')
+        }
+        
+        downloadUrl = result.url
+      }
+
+      // Create download link
+      const link = document.createElement('a')
+      link.href = downloadUrl || ''
+      link.download = item.name
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      console.log(`Downloaded: ${item.name}`)
+    } catch (error) {
+      console.error('Error downloading file:', error)
+      alert(`Failed to download ${item.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   const deleteFile = async (item: MediaItem) => {
-    if (!confirm(`Are you sure you want to delete ${item.name}?`)) {
+    if (!confirm(`Are you sure you want to delete ${item.name}?\n\nThis action cannot be undone.`)) {
       return
     }
 
     try {
-      // Note: You'll need to implement a delete API endpoint
-      console.log('Delete functionality would be implemented here')
-      alert('Delete functionality not yet implemented')
+      setLoading(true)
+      
+      const response = await fetch(`/api/delete_media?key=${encodeURIComponent(item.key)}&userId=${userId}`, {
+        method: 'DELETE'
+      })
+      
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete file')
+      }
+      
+      // Remove the item from the local state
+      if (item.type === 'image') {
+        setImages(prev => prev.filter(img => img.id !== item.id))
+      } else {
+        setVideos(prev => prev.filter(vid => vid.id !== item.id))
+      }
+      
+      // Show success message
+      alert(`Successfully deleted ${item.name}`)
+      console.log(`Deleted: ${item.name}`)
+      
     } catch (error) {
       console.error('Error deleting file:', error)
-      alert('Failed to delete file')
+      alert(`Failed to delete ${item.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setLoading(false)
     }
   }
+
+  const viewFullResolution = async (item: MediaItem) => {
+    try {
+      // Generate a fresh presigned URL for viewing
+      let viewUrl = item.url
+      
+      if (!viewUrl) {
+        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}&download=false`)
+        const result = await response.json()
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to generate view URL')
+        }
+        
+        viewUrl = result.url
+      }
+
+      // Set the item with the URL for the modal
+      setViewModalItem({ ...item, url: viewUrl })
+      setViewModalOpen(true)
+      
+    } catch (error) {
+      console.error('Error opening full resolution view:', error)
+      alert(`Failed to open ${item.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const refreshMedia = () => {
+    fetchUserMedia()
+  }
+
+  // Enhanced Media Card Component
+  const MediaCard = ({ item }: { item: MediaItem }) => (
+    <Card className="group hover:shadow-lg transition-all duration-200">
+      <CardContent className="p-4">
+        <div className="relative aspect-square mb-3 bg-gray-100 rounded-lg overflow-hidden">
+          {item.type === 'image' ? (
+            <img
+              src={item.url}
+              alt={item.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 cursor-pointer"
+              onClick={() => viewFullResolution(item)}
+              onError={(e) => {
+                console.error(`Failed to load image: ${item.name}`, {
+                  url: item.url,
+                  key: item.key,
+                  error: e
+                })
+                e.currentTarget.src = '/placeholder-image.svg'
+                // Try generating a fresh presigned URL
+                fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}`)
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.success && data.url !== item.url) {
+                      console.log(`Trying fresh URL for ${item.name}:`, data.url)
+                      e.currentTarget.src = data.url
+                    }
+                  })
+                  .catch(err => console.error('Failed to get fresh presigned URL:', err))
+              }}
+              onLoad={() => {
+                console.log(`Successfully loaded image: ${item.name}`)
+              }}
+            />
+          ) : (
+            <div className="relative w-full h-full cursor-pointer group-hover:scale-105 transition-transform duration-200">
+              <video
+                src={item.url}
+                className="w-full h-full object-cover"
+                preload="metadata"
+                muted
+                onClick={() => viewFullResolution(item)}
+                onError={(e) => {
+                  // Hide video and show fallback if video fails to load
+                  e.currentTarget.style.display = 'none'
+                  const fallback = e.currentTarget.nextElementSibling as HTMLElement
+                  if (fallback) fallback.style.display = 'flex'
+                }}
+              />
+              {/* Fallback div - hidden by default, shown if video fails */}
+              <div 
+                className="absolute inset-0 w-full h-full flex items-center justify-center bg-gray-200 transition-colors"
+                style={{ display: 'none' }}
+                onClick={() => viewFullResolution(item)}
+              >
+                <div className="text-center">
+                  <Play className="h-12 w-12 mx-auto text-blue-600 mb-2" />
+                  <p className="text-sm text-gray-600">Click to play</p>
+                </div>
+              </div>
+              {/* Play overlay icon */}
+              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200">
+                <Play className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+              </div>
+            </div>
+          )}
+          
+          {/* Folder Badge */}
+          {item.folder && (
+            <Badge 
+              variant="secondary" 
+              className="absolute top-2 left-2 text-xs"
+            >
+              {item.folder.replace('-', ' ')}
+            </Badge>
+          )}
+          
+          {/* Type Badge */}
+          <Badge 
+            variant={item.type === 'image' ? 'default' : 'outline'}
+            className="absolute top-2 right-2 text-xs"
+          >
+            {item.type === 'image' ? (
+              <><FileImage className="w-3 h-3 mr-1" /> IMG</>
+            ) : (
+              <><FileVideo className="w-3 h-3 mr-1" /> VID</>
+            )}
+          </Badge>
+        </div>
+        
+        <div className="space-y-2">
+          <h3 className="font-medium text-sm text-gray-900 truncate" title={item.name}>
+            {item.name}
+          </h3>
+          
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>{formatFileSize(item.size)}</span>
+            <span>{formatDate(item.created_at)}</span>
+          </div>
+          
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 text-xs"
+              onClick={() => viewFullResolution(item)}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              View
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 text-xs"
+              onClick={() => downloadFile(item)}
+            >
+              <Download className="h-3 w-3 mr-1" />
+              Download
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="text-xs"
+              onClick={() => deleteFile(item)}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 
   if (loading) {
     return (
@@ -170,6 +397,10 @@ export default function MediaLibraryPage() {
                 <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
                   <FileImage className="h-4 w-4" />
                   Media Library
+                </Link>
+                <Link href="/debug-s3" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <AlertCircle className="h-4 w-4" />
+                  Debug S3
                 </Link>
               </div>
             </div>
@@ -308,10 +539,17 @@ export default function MediaLibraryPage() {
                             className="object-cover"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement
+                              console.error(`Failed to load grid image: ${image.name}`, {
+                                url: image.url,
+                                key: image.key
+                              })
                               target.src = '/placeholder.svg'
                             }}
+                            onLoad={() => {
+                              console.log(`Successfully loaded grid image: ${image.name}`)
+                            }}
                           />
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
+                          <div className="absolute inset-0 bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
                               <Button
                                 size="sm"
@@ -323,7 +561,7 @@ export default function MediaLibraryPage() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                onClick={() => downloadFile(image.url, image.name)}
+                                onClick={() => downloadFile(image)}
                               >
                                 <Download className="h-4 w-4" />
                               </Button>
@@ -393,7 +631,7 @@ export default function MediaLibraryPage() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                onClick={() => downloadFile(video.url, video.name)}
+                                onClick={() => downloadFile(video)}
                               >
                                 <Download className="h-4 w-4" />
                               </Button>
@@ -519,6 +757,81 @@ export default function MediaLibraryPage() {
           )}
         </div>
       </div>
+
+      {/* Full Resolution View Modal */}
+      {viewModalOpen && viewModalItem && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          onClick={() => setViewModalOpen(false)}
+        >
+          <div className="relative max-w-full max-h-full">
+            <button
+              onClick={() => setViewModalOpen(false)}
+              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-black bg-opacity-50 rounded-full p-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            {viewModalItem.type === 'image' ? (
+              <img
+                src={viewModalItem.url}
+                alt={viewModalItem.name}
+                className="max-w-full max-h-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <video
+                src={viewModalItem.url}
+                controls
+                className="max-w-full max-h-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Your browser does not support the video tag.
+              </video>
+            )}
+            
+            <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-75 text-white p-4 rounded">
+              <h3 className="font-semibold">{viewModalItem.name}</h3>
+              <p className="text-sm text-gray-300">
+                {viewModalItem.folder && (
+                  <span className="mr-4">Folder: {viewModalItem.folder}</span>
+                )}
+                {viewModalItem.size && (
+                  <span className="mr-4">Size: {formatFileSize(viewModalItem.size)}</span>
+                )}
+                {viewModalItem.created_at && (
+                  <span>Created: {formatDate(viewModalItem.created_at)}</span>
+                )}
+              </p>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    downloadFile(viewModalItem)
+                  }}
+                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setViewModalOpen(false)
+                    deleteFile(viewModalItem)
+                  }}
+                  className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 

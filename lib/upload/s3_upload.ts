@@ -138,7 +138,7 @@ export async function uploadImageToS3({
  */
 export async function uploadVideoToS3({ 
   videoBlob, 
-  userId, 
+  userId = 'user', 
   filename,
   folder = 'video-clips'
 }: UploadVideoToS3Params): Promise<S3UploadResult> {

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate a unique user ID for this session (in production, use actual user auth)
-    const userId : string = process.env.USER_ID || 'kylesmith010701';
+    const userId : string = process.env.USER_ID || 'user';
     
     // Upload to Supabase Storage
     const result = await uploadImage({

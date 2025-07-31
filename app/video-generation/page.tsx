@@ -181,43 +181,17 @@ Mood: ${fullStory.mood}`:
               totalClips: clips.length,
               frameAspectRatio: frameAspectRatio
           });
-          let videoResult : any;
-          response.then(result => videoResult = result)
-            try {
-              const currentSession = localStorage.getItem('currentSession')
-              const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-              console.log(`Uploading video clip ${clip.id} to S3...`)
-              const videoResult = await response;
-              const uploadResult = await uploadMovieToStorage({
-                videoUrl: videoResult.videoUrl,
-                userId: userId,
-                filename: `video_clip_${clip.id}_${Date.now()}`,
-                duration: 5, // Each clip is 5 seconds
-                thumbnail: frame.imageUrl
-              })
-              // Update clip with Supabase URL
-              setVideoClips(prev => prev.map(c =>
-                c.id === clip.id ? {
-                  ...c,
-                  status: 'completed',
-                  videoUrl: uploadResult.publicUrl, // Use Supabase URL instead of original
-                  isFallback: false
-                } : c
-              ))
-              console.log(`Clip ${i + 1} uploaded to Supabase successfully:`, uploadResult.publicUrl)
-            } catch (uploadError) {
-              console.error(`Error uploading clip ${i + 1} to Supabase:`, uploadError)
-              const videoResult = await response;
-              // Keep the original URL if upload fails
-              setVideoClips(prev => prev.map(c =>
-                c.id === clip.id ? {
-                  ...c,
-                  status: 'completed',
-                  videoUrl: videoResult.videoUrl, // Use the original video URL
-                  isFallback: false
-                } : c
-              ))
-            }
+          // Generate video clip and update state with original URL (no automatic S3 upload)
+          const videoResult = await response;
+          setVideoClips(prev => prev.map(c =>
+            c.id === clip.id ? {
+              ...c,
+              status: 'completed',
+              videoUrl: videoResult.videoUrl, // Use the original video URL
+              isFallback: false
+            } : c
+          ))
+          console.log(`Clip ${i + 1} generated successfully:`, videoResult.videoUrl)
 
         } catch (error) {
           console.error(`Error generating clip ${i + 1}:`, error)

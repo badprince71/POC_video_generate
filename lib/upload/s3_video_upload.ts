@@ -53,7 +53,7 @@ interface UploadMovieResult {
 }
 
 /**
- * Upload video to S3 (replacement for Supabase uploadVideo)
+ * Upload video to S3 via API (CORS-free solution)
  */
 export async function uploadVideo({ 
   videoUrl, 
@@ -64,7 +64,7 @@ export async function uploadVideo({
   userId 
 }: UploadVideoParams): Promise<UploadVideoResult> {
   try {
-    console.log("Uploading video to S3...", { filename, userId, duration });
+    console.log("Uploading video to S3 via API...", { filename, userId, duration });
 
     // Fetch the video file from the URL
     const response = await fetch(videoUrl);
@@ -79,22 +79,37 @@ export async function uploadVideo({
     // Create unique filename
     const uniqueFilename = generateUniqueFilename(filename);
 
-    // Upload to S3 video-clips folder
-    const result = await uploadVideoToS3({
-      videoBlob,
-      userId,
-      filename: uniqueFilename,
-      folder: 'video-clips'
+    // Create FormData for API upload
+    const formData = new FormData();
+    formData.append('video', new File([videoBlob], uniqueFilename, { type: 'video/mp4' }));
+    formData.append('userId', userId);
+    formData.append('filename', uniqueFilename);
+
+    // Upload via API route (bypasses CORS issues)
+    const apiResponse = await fetch('/api/upload_video_s3', {
+      method: 'POST',
+      body: formData
     });
 
-    console.log("Video uploaded successfully to S3:", result.publicUrl);
+    if (!apiResponse.ok) {
+      const errorData = await apiResponse.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(errorData.error || 'Upload failed');
+    }
+
+    const result = await apiResponse.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Upload failed');
+    }
+
+    console.log("Video uploaded successfully to S3 via API:", result.publicUrl);
 
     return { 
       url: result.publicUrl
     };
 
   } catch (error) {
-    console.error("Error uploading video to S3:", error);
+    console.error("Error uploading video to S3 via API:", error);
     throw new Error(error instanceof Error ? error.message : 'Failed to upload video to S3');
   }
 }
@@ -110,7 +125,7 @@ export async function uploadMovieToS3({
   thumbnail
 }: UploadMovieParams): Promise<UploadMovieResult> {
   try {
-    console.log("Uploading movie to S3...", { filename, userId, duration });
+    console.log("Uploading movie to S3 via API...", { filename, userId, duration });
 
     // Fetch the video file from the URL with increased timeout
     const controller = new AbortController();
@@ -138,24 +153,40 @@ export async function uploadMovieToS3({
     const sanitizedFilename = sanitizeFilename(filename);
     const finalFilename = `${sanitizedFilename}_${timestamp}.mp4`;
 
-    // Upload using chunked upload for better handling of large files
-    const publicUrl = await uploadVideoChunkedToS3({
-      videoBlob,
-      userId,
-      filename: finalFilename
+    // Create FormData for API upload (bypasses CORS issues)
+    const formData = new FormData();
+    formData.append('video', new File([videoBlob], finalFilename, { type: 'video/mp4' }));
+    formData.append('userId', userId);
+    formData.append('filename', finalFilename);
+
+    // Upload via API route instead of direct S3 upload
+    const apiResponse = await fetch('/api/upload_video_s3', {
+      method: 'POST',
+      body: formData
     });
 
-    console.log("Movie uploaded successfully to S3:", publicUrl);
+    if (!apiResponse.ok) {
+      const errorData = await apiResponse.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(errorData.error || 'Upload failed');
+    }
+
+    const result = await apiResponse.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Upload failed');
+    }
+
+    console.log("Movie uploaded successfully to S3 via API:", result.publicUrl);
 
     return { 
-      publicUrl,
-      filename: finalFilename,
-      size: videoBlob.size,
+      publicUrl: result.publicUrl,
+      filename: result.filename,
+      size: result.size,
       thumbnail: thumbnail
     };
 
   } catch (error) {
-    console.error("Error uploading movie to S3:", error);
+    console.error("Error uploading movie to S3 via API:", error);
     
     if (error instanceof Error) {
       if (error.name === 'AbortError') {

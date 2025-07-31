@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate a unique user ID for this session (in production, use actual user auth)
-    const userId: string = process.env.USER_ID || 'kylesmith010701';
+    const userId: string = process.env.USER_ID || 'user';
     
     // Determine upload type based on whether it's a user upload or generated frame
     const uploadType: 'reference-frames' | 'user-uploads' = isUserUpload ? 'user-uploads' : 'reference-frames';

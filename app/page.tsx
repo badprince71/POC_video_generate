@@ -121,25 +121,15 @@ export default function FrameGenerationPage() {
   // Utility function to save frames to database
   const saveFramesToDatabase = async (frames: VideoFrame[]) => {
     try {
-      // Upload images to cloud storage and get URLs
-      const framesWithCloudUrls = await Promise.all(
-        frames.map(async (frame) => {
-          if (frame.imageUrl && frame.imageUrl.startsWith('data:image/')) {
-            // Upload base64 image to cloud storage
-            const { imageUrl, userId } = await uploadImageToCloud(frame.imageUrl, frame.id)
-            return {
-              ...frame,
-              imageUrl: imageUrl,
-              userId: userId
-            }
-          }
-          return frame
-        })
-      )
+      // Save frames with original URLs (no automatic cloud upload)
+      const framesWithOriginalUrls = frames.map((frame) => ({
+        ...frame,
+        userId: `user_${Date.now()}`
+      }))
 
       // Generate session ID
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      const userId = (framesWithCloudUrls[0] as any)?.userId || `user_${Date.now()}`
+      const userId = framesWithOriginalUrls[0]?.userId || `user_${Date.now()}`
 
       // Save frames to database
       const response = await fetch('/api/save_frames', {
@@ -148,7 +138,7 @@ export default function FrameGenerationPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          frames: framesWithCloudUrls,
+          frames: framesWithOriginalUrls,
           userId: userId,
           sessionId: sessionId,
           originalPrompt: prompt,

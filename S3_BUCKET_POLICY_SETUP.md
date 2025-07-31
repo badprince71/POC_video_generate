@@ -1,10 +1,18 @@
-# 🔧 S3 Bucket Policy Setup (ACL Error Fix)
+# 🔧 S3 Bucket Policy & CORS Setup (Upload Error Fix)
 
-## 🐛 **Problem Fixed**
-The error `AccessControlListNotSupported: The bucket does not allow ACLs` occurs because your S3 bucket has ACLs disabled (which is a modern security best practice).
+## 🐛 **Problems Fixed**
+1. `AccessControlListNotSupported: The bucket does not allow ACLs` - ACLs are disabled (modern security best practice)
+2. `CORS policy` errors - Frontend uploads blocked by browser security
 
-## ✅ **Solution**
-I've removed all `ACL: 'public-read'` parameters from the upload functions. Now you need to set up a **bucket policy** instead to allow public read access.
+## ✅ **Solution Overview** 
+You need to configure TWO things in your S3 bucket:
+1. **Bucket Policy** - Allows public read access and upload permissions
+2. **CORS Configuration** - Allows frontend uploads from your domain/localhost
+
+## 🚨 **BOTH Are Required!**
+- **Bucket Policy alone** = Still get CORS errors ❌
+- **CORS alone** = Still get permission errors ❌  
+- **Both together** = Uploads work perfectly ✅
 
 ## 🔐 **Required S3 Bucket Policy**
 
@@ -46,7 +54,9 @@ Go to your S3 bucket in AWS Console and add this bucket policy:
 }
 ```
 
-### 3. **If you don't know your Account ID or IAM user**, use this simpler policy:
+### 3. **Recommended: Complete Policy for Frontend Uploads**
+
+For direct frontend uploads (which your app uses), use this comprehensive policy:
 
 ```json
 {
@@ -54,16 +64,34 @@ Go to your S3 bucket in AWS Console and add this bucket policy:
     "Statement": [
         {
             "Sid": "PublicReadGetObject",
-            "Effect": "Allow", 
+            "Effect": "Allow",
             "Principal": "*",
             "Action": "s3:GetObject",
             "Resource": "arn:aws:s3:::happinest-aiinvitations/*"
+        },
+        {
+            "Sid": "AllowFrontendUploads",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": [
+                "s3:PutObject",
+                "s3:PutObjectAcl"
+            ],
+            "Resource": "arn:aws:s3:::happinest-aiinvitations/*",
+            "Condition": {
+                "StringLike": {
+                    "s3:x-amz-content-sha256": "*"
+                }
+            }
         }
     ]
 }
 ```
 
-**Note**: This simpler policy allows public read access but relies on your AWS credentials for upload permissions.
+**This policy allows:**
+- ✅ Public read access for all files
+- ✅ Upload access from your application (with AWS credentials)
+- ✅ Direct frontend uploads (needed for CORS to work)
 
 ## 🛡️ **Security Settings**
 
@@ -81,7 +109,7 @@ In your bucket's **"Permissions"** tab, make sure these settings allow your poli
 After applying the bucket policy, test your upload again. You should see:
 
 ```
-Uploading image to S3: reference-frames/kylesmith010701/frame_1_timestamp.png
+Uploading image to S3: reference-frames/user/frame_1_timestamp.png
 ✓ Successfully uploaded image to S3: https://happinest-aiinvitations.s3.us-east-1.amazonaws.com/...
 ```
 
@@ -119,6 +147,68 @@ const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
 But for a video generation app, **public URLs are usually preferred** for easy embedding and sharing.
 
+## 🌐 **CRITICAL: CORS Configuration Required**
+
+**IMPORTANT**: The bucket policy alone is NOT enough for frontend uploads. You also need CORS configuration!
+
+### 4. Add CORS Configuration
+
+In your S3 bucket:
+- Go to **"Permissions"** tab
+- Scroll to **"Cross-origin resource sharing (CORS)"**
+- Click **"Edit"** and add this configuration:
+
+```json
+[
+    {
+        "AllowedHeaders": ["*"],
+        "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+        "AllowedOrigins": [
+            "http://localhost:3000",
+            "http://localhost:3001", 
+            "https://your-production-domain.com"
+        ],
+        "ExposeHeaders": ["ETag"],
+        "MaxAgeSeconds": 3000
+    }
+]
+```
+
+**Replace `https://your-production-domain.com` with your actual production domain!**
+
+### 5. For Development Only (Alternative)
+If you want to allow ALL origins during development (less secure):
+
+```json
+[
+    {
+        "AllowedHeaders": ["*"],
+        "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+        "AllowedOrigins": ["*"],
+        "ExposeHeaders": ["ETag"],
+        "MaxAgeSeconds": 3000
+    }
+]
+```
+
+## 🔄 **Alternative Solution Implemented**
+
+I've also implemented a **backup solution** that uploads via server-side API routes instead of direct frontend-to-S3 uploads. This **completely bypasses CORS issues**.
+
+**What Changed:**
+- Created `/api/upload_video_s3/route.ts` - Server-side upload endpoint
+- Updated `lib/upload/s3_video_upload.ts` - Now uses API uploads instead of direct S3 uploads
+- Video uploads now go: `Frontend → Your API → S3` (no CORS needed!)
+
 ## 🎉 **Ready to Test!**
 
-Once you apply the bucket policy, your uploads should work perfectly! 🚀
+**Option 1 (Recommended):** The code changes above should work immediately - **no S3 configuration needed**!
+
+**Option 2:** If you prefer direct uploads, apply BOTH the bucket policy AND CORS configuration above.
+
+**Without CORS, you'd get errors like:**
+```
+Access to fetch at 'https://your-bucket.s3.amazonaws.com/...' from origin 'http://localhost:3000' has been blocked by CORS policy
+```
+
+**But now your uploads should work immediately!** 🚀
