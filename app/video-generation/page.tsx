@@ -28,6 +28,7 @@ import {
   Eye,
   RefreshCw,
   UploadIcon,
+  X,
 } from "lucide-react"
 import { uploadVideo, uploadMovieToS3 as uploadMovieToStorage } from "@/lib/upload/s3_video_upload"
 import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
@@ -84,6 +85,32 @@ interface S3VideoClip {
 type VideoGenerationStep = "input" | "generating-clips" | "clips-ready" | "merging-clips" | "video-ready"
 
 export default function VideoGenerationPage() {
+  // Generate unique request ID for this video generation session
+  const [requestId] = useState(() => `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+  const [userId, setUserId] = useState<string>('')
+  
+  // Initialize userId from localStorage after component mounts
+  useEffect(() => {
+    // Check if we're in the browser environment
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const session = localStorage.getItem('currentSession')
+      if (session) {
+        try {
+          const { userId } = JSON.parse(session)
+          setUserId(userId || `user_${Date.now()}`)
+        } catch (error) {
+          console.error('Error parsing session:', error)
+          setUserId(`user_${Date.now()}`)
+        }
+      } else {
+        setUserId(`user_${Date.now()}`)
+      }
+    } else {
+      // Fallback for server-side rendering
+      setUserId(`user_${Date.now()}`)
+    }
+  }, [])
+  
   const [currentStep, setCurrentStep] = useState<VideoGenerationStep>("input")
   const [generatedFrames, setGeneratedFrames] = useState<VideoFrame[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<GeneratedVideo | null>(null)
@@ -94,6 +121,17 @@ export default function VideoGenerationPage() {
   const [isGeneratingClips, setIsGeneratingClips] = useState(false)
   const [isMergingClips, setIsMergingClips] = useState(false)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
+  const [autoSaving, setAutoSaving] = useState(false)
+  const [recoveringFrames, setRecoveringFrames] = useState(false)
+  const [videoPlayerModal, setVideoPlayerModal] = useState<{
+    isOpen: boolean;
+    videoUrl: string;
+    title: string;
+  }>({
+    isOpen: false,
+    videoUrl: '',
+    title: ''
+  })
   
   // S3 Video Clips Management State
   const [s3VideoClips, setS3VideoClips] = useState<S3VideoClip[]>([])
@@ -101,6 +139,75 @@ export default function VideoGenerationPage() {
   const [uploadingClip, setUploadingClip] = useState(false)
 
   const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"];
+  // Function to convert S3 URLs to proxy URLs to avoid CORS issues
+  const convertS3UrlToProxy = (url: string): string => {
+    if (url.includes('amazonaws.com') && !url.includes('/api/proxy_s3_image')) {
+      // Extract the key from the S3 URL
+      const urlParts = url.split('.com/')
+      if (urlParts.length > 1) {
+        const key = urlParts[1]
+        return `/api/proxy_s3_image?key=${encodeURIComponent(key)}`
+      }
+    }
+    return url
+  }
+
+  // Function to convert S3 video URLs to proxy URLs
+  const convertS3VideoUrlToProxy = (url: string): string => {
+    if (url.includes('amazonaws.com') && !url.includes('/api/proxy_s3_video')) {
+      // Extract the key from the S3 URL
+      const urlParts = url.split('.com/')
+      if (urlParts.length > 1) {
+        const key = urlParts[1]
+        return `/api/proxy_s3_video?key=${encodeURIComponent(key)}`
+      }
+    }
+    return url
+  }
+
+  // Function to ensure frames have accessible URLs
+  const ensureFrameUrls = (frames: VideoFrame[]): VideoFrame[] => {
+    return frames.map(frame => ({
+      ...frame,
+      imageUrl: convertS3UrlToProxy(frame.imageUrl)
+    }))
+  }
+
+  // Function to ensure video clips have accessible URLs
+  const ensureVideoClipUrls = (clips: VideoClip[]): VideoClip[] => {
+    return clips.map(clip => ({
+      ...clip,
+      videoUrl: clip.videoUrl ? convertS3VideoUrlToProxy(clip.videoUrl) : clip.videoUrl
+    }))
+  }
+
+  // Function to ensure S3 video clips have accessible URLs
+  const ensureS3VideoClipUrls = (clips: S3VideoClip[]): S3VideoClip[] => {
+    return clips.map(clip => ({
+      ...clip,
+      url: convertS3VideoUrlToProxy(clip.url),
+      downloadUrl: clip.downloadUrl ? convertS3VideoUrlToProxy(clip.downloadUrl) : clip.downloadUrl
+    }))
+  }
+
+  // Function to open video player modal
+  const openVideoPlayer = (videoUrl: string, title: string) => {
+    setVideoPlayerModal({
+      isOpen: true,
+      videoUrl: convertS3VideoUrlToProxy(videoUrl),
+      title
+    })
+  }
+
+  // Function to close video player modal
+  const closeVideoPlayer = () => {
+    setVideoPlayerModal({
+      isOpen: false,
+      videoUrl: '',
+      title: ''
+    })
+  }
+
   // Load frames from database on component mount
   useEffect(() => {
     const loadFramesFromDatabase = async () => {
@@ -112,7 +219,7 @@ export default function VideoGenerationPage() {
         }
 
         // Get current session from localStorage
-        const currentSession = localStorage.getItem('currentSession')
+        const currentSession = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('currentSession') : null
         if (!currentSession) {
           console.log('No current session found. Please generate frames first.')
           // Show user-friendly message
@@ -124,7 +231,9 @@ export default function VideoGenerationPage() {
           sessionData = JSON.parse(currentSession)
         } catch (parseError) {
           console.error('Invalid session data in localStorage:', parseError)
-          localStorage.removeItem('currentSession') // Clear corrupted data
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.removeItem('currentSession') // Clear corrupted data
+          }
           return
         }
 
@@ -132,7 +241,9 @@ export default function VideoGenerationPage() {
 
         if (!sessionId || !userId) {
           console.error('Incomplete session data:', sessionData)
-          localStorage.removeItem('currentSession') // Clear incomplete data
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.removeItem('currentSession') // Clear incomplete data
+          }
           return
         }
         
@@ -155,9 +266,26 @@ export default function VideoGenerationPage() {
         }
 
         if (result.frames && result.frames.length > 0) {
-          setGeneratedFrames(result.frames)
+          // Check if frames have valid image URLs
+          const framesWithValidUrls = result.frames.filter((frame: VideoFrame) => 
+            frame.imageUrl && 
+            (frame.imageUrl.startsWith('data:image/') || 
+             frame.imageUrl.includes('amazonaws.com') || 
+             frame.imageUrl.includes('s3.'))
+          )
+          
+          if (framesWithValidUrls.length === 0) {
+            console.warn('Frames found but no valid image URLs. Attempting to recover from S3...')
+            await attemptFrameRecovery(sessionId, userId)
+            return
+          }
+          
+          setGeneratedFrames(ensureFrameUrls(framesWithValidUrls))
           setCurrentStep("input")
-          console.log(`Loaded ${result.frames.length} frames from database for session ${sessionId}`)
+          console.log(`Loaded ${framesWithValidUrls.length} frames from database for session ${sessionId}`)
+          
+          // Auto-save frames when loaded (in case they need to be saved with new structure)
+          await autoSaveFrames(framesWithValidUrls)
         } else {
           console.log('No frames found in database for this session')
         }
@@ -172,6 +300,46 @@ export default function VideoGenerationPage() {
 
     loadFramesFromDatabase()
   }, [])
+
+  // Function to attempt frame recovery from S3
+  const attemptFrameRecovery = async (sessionId: string, userId: string) => {
+    try {
+      setRecoveringFrames(true)
+      console.log('Attempting to recover frames from S3...')
+      showToast.info('Attempting to recover frames from S3...')
+      
+      // Try to list frames from S3 for this user
+      const response = await fetch(`/api/list_s3_frames?userId=${userId}`)
+      if (!response.ok) {
+        throw new Error('Failed to list S3 frames')
+      }
+      
+      const result = await response.json()
+      if (result.frames && result.frames.length > 0) {
+        // Convert S3 frames to VideoFrame format
+        const recoveredFrames: VideoFrame[] = result.frames.map((s3Frame: any, index: number) => ({
+          id: index + 1,
+          timestamp: `0:${(index * 5).toString().padStart(2, "0")}`,
+          imageUrl: s3Frame.publicUrl,
+          description: `Recovered frame ${index + 1}`,
+          prompt: `Recovered frame from S3`,
+        }))
+        
+        setGeneratedFrames(ensureFrameUrls(recoveredFrames))
+        setCurrentStep("input")
+        console.log(`Recovered ${recoveredFrames.length} frames from S3`)
+        showToast.success(`Successfully recovered ${recoveredFrames.length} frames from S3`)
+      } else {
+        console.log('No frames found in S3 for recovery')
+        showToast.error('No frames found in S3 for recovery. Please regenerate frames.')
+      }
+    } catch (error) {
+      console.error('Error attempting frame recovery:', error)
+      showToast.error('Failed to recover frames from S3')
+    } finally {
+      setRecoveringFrames(false)
+    }
+  }
 
   // Load S3 video clips when component mounts and when clips-ready step is reached
   useEffect(() => {
@@ -198,7 +366,7 @@ export default function VideoGenerationPage() {
         video.folder === 'video-clips'
       )
       
-      setS3VideoClips(videoClipsFromS3)
+      setS3VideoClips(ensureS3VideoClipUrls(videoClipsFromS3))
       console.log(`Loaded ${videoClipsFromS3.length} video clips from S3`)
     } catch (error) {
       console.error('Error fetching S3 video clips:', error)
@@ -244,6 +412,8 @@ export default function VideoGenerationPage() {
   }
 
   const handleVideoUpload = () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'video/mp4,video/*'
@@ -273,6 +443,8 @@ export default function VideoGenerationPage() {
       }
 
       // Create download link
+      if (typeof window === 'undefined' || typeof document === 'undefined') return
+      
       const link = document.createElement('a')
       link.href = downloadUrl || ''
       link.download = clip.name
@@ -290,7 +462,7 @@ export default function VideoGenerationPage() {
   }
 
   const deleteVideoClip = async (clip: S3VideoClip) => {
-    if (!confirm(`Are you sure you want to delete ${clip.name}?\n\nThis action cannot be undone.`)) {
+    if (typeof window === 'undefined' || !window.confirm(`Are you sure you want to delete ${clip.name}?\n\nThis action cannot be undone.`)) {
       return
     }
 
@@ -382,17 +554,23 @@ Mood: ${fullStory.mood}`:
               totalClips: clips.length,
               frameAspectRatio: frameAspectRatio
           });
-          // Generate video clip and update state with original URL (no automatic S3 upload)
+          // Generate video clip and update state with original URL
           const videoResult = await response;
+          const completedClip = {
+            ...clip,
+            status: 'completed' as const,
+            videoUrl: videoResult.videoUrl, // Use the original video URL
+            isFallback: false
+          }
+          
           setVideoClips(prev => prev.map(c =>
-            c.id === clip.id ? {
-              ...c,
-              status: 'completed',
-              videoUrl: videoResult.videoUrl, // Use the original video URL
-              isFallback: false
-            } : c
+            c.id === clip.id ? completedClip : c
           ))
+          
           console.log(`Clip ${i + 1} generated successfully:`, videoResult.videoUrl)
+          
+          // Auto-save the completed clip
+          await autoSaveVideoClip(completedClip)
 
         } catch (error) {
           console.error(`Error generating clip ${i + 1}:`, error)
@@ -439,7 +617,9 @@ Mood: ${fullStory.mood}`:
 
     } catch (error) {
       console.error('Error during clip generation:', error)
-      alert('Error generating video clips. Please try again.')
+      if (typeof window !== 'undefined') {
+        alert('Error generating video clips. Please try again.')
+      }
       setCurrentStep("input")
     } finally {
       setIsGeneratingClips(false)
@@ -501,6 +681,9 @@ Mood: ${fullStory.mood}`:
 
       console.log('Video clips merged successfully using client-side processing')
       showToast.success('Video clips merged successfully!')
+      
+      // Auto-save the final video
+      await autoSaveFinalVideo(finalVideo)
 
     } catch (error) {
       console.error('Error merging video clips:', error)
@@ -555,6 +738,8 @@ Mood: ${fullStory.mood}`:
   }
 
   const downloadVideo = () => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    
     if (generatedVideo?.finalVideoUrl) {
       const link = document.createElement('a')
       link.href = generatedVideo.finalVideoUrl
@@ -565,19 +750,28 @@ Mood: ${fullStory.mood}`:
     }
   }
 
-  const uploadFramesToSupabase = async () => {
-    if (generatedFrames.length === 0) return
+  // Autosave function for frames
+  const autoSaveFrames = async (frames: VideoFrame[]) => {
+    if (frames.length === 0) return
 
     try {
-      // Show loading state
-      const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
-      if (uploadButton) {
-        uploadButton.textContent = 'Uploading to S3...'
-        uploadButton.setAttribute('disabled', 'true')
+      setAutoSaving(true)
+      console.log(`Auto-saving ${frames.length} frames to ${userId}/${requestId}/reference-frames/`)
+      
+      // Check if frames already have S3 URLs to avoid unnecessary re-upload
+      const framesNeedingUpload = frames.filter(frame => 
+        !frame.imageUrl.includes('amazonaws.com') && 
+        !frame.imageUrl.includes('s3.')
+      )
+      
+      if (framesNeedingUpload.length === 0) {
+        console.log('All frames already have S3 URLs, skipping auto-save')
+        setAutoSaving(false)
+        return
       }
-
-      // Upload each frame to Supabase
-      const uploadPromises = generatedFrames.map(async (frame, index) => {
+      
+      // Upload each frame to S3 with new folder structure
+      const uploadPromises = framesNeedingUpload.map(async (frame, index) => {
         const frameNumber = (index + 1).toString().padStart(2, '0')
         const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
         
@@ -594,7 +788,7 @@ Mood: ${fullStory.mood}`:
           })
         }
 
-        // Upload to S3
+        // Upload to S3 with new folder structure: <userid>/<requestid>/frames/
         const uploadResponse = await fetch('/api/upload_image_s3', {
           method: 'POST',
           headers: {
@@ -603,7 +797,8 @@ Mood: ${fullStory.mood}`:
           body: JSON.stringify({
             imageData: imageData,
             frameId: frame.id,
-            isUserUpload: false // This is a generated frame
+            isUserUpload: false,
+            folderPath: `${userId}/${requestId}/reference-frames` // New folder structure
           }),
         })
 
@@ -613,136 +808,104 @@ Mood: ${fullStory.mood}`:
           throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
         }
 
-        console.log(`Frame ${frame.id} uploaded to Supabase:`, result.imageUrl)
-        return result
+        console.log(`Frame ${frame.id} auto-saved to:`, result.imageUrl)
+        return { frameId: frame.id, imageUrl: result.imageUrl }
       })
 
       // Wait for all uploads to complete
       const results = await Promise.all(uploadPromises)
       
-      // Update frame URLs with Supabase URLs
-      const updatedFrames = generatedFrames.map((frame, index) => ({
-        ...frame,
-        imageUrl: results[index].imageUrl
-      }))
-      
-      setGeneratedFrames(updatedFrames)
-
-      showToast.success(`Successfully uploaded ${generatedFrames.length} frames to Supabase!`)
-      
-    } catch (error) {
-      console.error('Error uploading frames to Supabase:', error)
-      showToast.error(`Failed to upload frames to Supabase: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      // Reset button state
-      const uploadButton = document.getElementById('upload-frames-to-supabase-btn')
-      if (uploadButton) {
-        uploadButton.textContent = 'Save Frames'
-        uploadButton.removeAttribute('disabled')
-      }
-    }
-  }
-
-  const uploadVideoClipsToSupabase = async () => {
-    const completedClips = videoClips.filter(clip => clip.status === 'completed')
-    
-    if (completedClips.length === 0) {
-      showToast.error('No completed video clips to upload')
-      return
-    }
-
-    try {
-      // Show loading state
-      const uploadButton = document.getElementById('upload-clips-to-supabase-btn')
-      if (uploadButton) {
-        uploadButton.textContent = 'Uploading Clips to S3...'
-        uploadButton.setAttribute('disabled', 'true')
-      }
-
-      const currentSession = localStorage.getItem('currentSession')
-      const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-      
-      // Upload each completed video clip to Supabase
-      for (const clip of completedClips) {
-        if (clip.videoUrl && !clip.videoUrl.includes('supabase')) {
-          console.log(`Uploading video clip ${clip.id} to S3...`)
-          const uploadResult = await uploadMovieToStorage({
-            videoUrl: clip.videoUrl,
-            userId: 'user',
-            filename: `video_clip_${clip.id}_${Date.now()}`,
-            duration: 5, // Each clip is 5 seconds
-            thumbnail: generatedFrames[clip.startFrame]?.imageUrl
-          })
-          
-          // Update clip with Supabase URL
-          setVideoClips(prev => prev.map(c => 
-            c.id === clip.id ? { ...c, videoUrl: uploadResult.publicUrl } : c
-          ))
-          
-          console.log(`Video clip ${clip.id} uploaded to Supabase successfully:`, uploadResult.publicUrl)
+      // Update frame URLs with S3 URLs, but preserve existing frames
+      const updatedFrames = frames.map((frame) => {
+        const uploadResult = results.find(r => r.frameId === frame.id)
+        if (uploadResult) {
+          return {
+            ...frame,
+            imageUrl: uploadResult.imageUrl // This will already be a proxy URL from the updated S3 upload function
+          }
         }
-      }
-
-      showToast.success(`Successfully uploaded ${completedClips.length} video clips to S3!`)
-      
-    } catch (error) {
-      console.error('Error uploading video clips to Supabase:', error)
-      showToast.error(`Failed to upload video clips to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      // Reset button state
-      const uploadButton = document.getElementById('upload-clips-to-supabase-btn')
-      if (uploadButton) {
-        uploadButton.textContent = 'Upload Video Clips to S3'
-        uploadButton.removeAttribute('disabled')
-      }
-    }
-  }
-
-  const uploadFinalVideoToSupabase = async () => {
-    if (!generatedVideo?.finalVideoUrl) {
-      showToast.error('No final video available to upload')
-      return
-    }
-
-    try {
-      // Show loading state
-      const uploadButton = document.getElementById('upload-final-video-to-supabase-btn')
-      if (uploadButton) {
-        uploadButton.textContent = 'Uploading to S3...'
-        uploadButton.setAttribute('disabled', 'true')
-      }
-
-      const currentSession = localStorage.getItem('currentSession')
-      const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-      
-      console.log('Uploading final video to S3...')
-      const uploadResult = await uploadMovieToStorage({
-        videoUrl: generatedVideo.finalVideoUrl,
-        userId: 'user',
-        filename: `final_video_${generatedVideo.id}_${Date.now()}`,
-        duration: generatedVideo.videoClips.length * 5, // Total duration
-        thumbnail: generatedVideo.frames[0]?.imageUrl
+        return frame // Keep existing frame if no upload result found
       })
       
-      // Update the final video with the Supabase URL
-      setGeneratedVideo(prev => prev ? {
-        ...prev,
-        finalVideoUrl: uploadResult.publicUrl
-      } : null)
-      
-      console.log('Final video uploaded to S3 successfully:', uploadResult.publicUrl)
-      showToast.success('Final video uploaded to S3 successfully!')
+      // Only update state if we have frames to update
+      if (updatedFrames.length > 0) {
+        setGeneratedFrames(ensureFrameUrls(updatedFrames))
+        showToast.success(`Auto-saved ${results.length} frames to ${userId}/${requestId}/reference-frames/`)
+      }
       
     } catch (error) {
-      console.error('Error uploading final video to S3:', error)
-      showToast.error(`Failed to upload final video to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Error auto-saving frames:', error)
+      showToast.error(`Failed to auto-save frames: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      // Don't clear frames on error - keep existing frames
     } finally {
-      // Reset button state
-      const uploadButton = document.getElementById('upload-final-video-to-supabase-btn')
-      if (uploadButton) {
-        uploadButton.textContent = 'Upload Final Video to S3'
-        uploadButton.removeAttribute('disabled')
-      }
+      setAutoSaving(false)
+    }
+  }
+
+  // Autosave function for video clips
+  const autoSaveVideoClip = async (clip: VideoClip) => {
+    if (!clip.videoUrl || clip.videoUrl.includes('amazonaws.com')) return // Already saved
+
+    try {
+      setAutoSaving(true)
+      console.log(`Auto-saving video clip ${clip.id} to ${userId}/${requestId}/video-clips/`)
+      
+      const uploadResult = await uploadMovieToStorage({
+        videoUrl: clip.videoUrl,
+        userId: userId,
+        filename: `${requestId}_clip_${clip.id}_${Date.now()}`,
+        duration: 5, // Each clip is 5 seconds
+        thumbnail: generatedFrames[clip.startFrame]?.imageUrl,
+        folderPath: `${userId}/${requestId}/video-clips`
+      })
+      
+      // Update clip with S3 URL
+      setVideoClips(prev => prev.map(c => 
+        c.id === clip.id ? { ...c, videoUrl: convertS3VideoUrlToProxy(uploadResult.publicUrl) } : c
+      ))
+      
+      console.log(`Video clip ${clip.id} auto-saved to:`, uploadResult.publicUrl)
+      showToast.success(`Auto-saved clip ${clip.id} to ${userId}/${requestId}/video-clips/`)
+      
+    } catch (error) {
+      console.error(`Error auto-saving video clip ${clip.id}:`, error)
+      showToast.error(`Failed to auto-save clip ${clip.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setAutoSaving(false)
+    }
+  }
+
+  // Autosave function for final video
+  const autoSaveFinalVideo = async (video: GeneratedVideo) => {
+    if (!video?.finalVideoUrl) return
+
+    try {
+      setAutoSaving(true)
+      console.log(`Auto-saving final video to ${userId}/${requestId}/video-clips/`)
+      
+      const uploadResult = await uploadMovieToStorage({
+        videoUrl: video.finalVideoUrl,
+        userId: userId,
+        filename: `${requestId}_final_video_${Date.now()}`,
+        duration: video.videoClips.length * 5, // Total duration
+        thumbnail: video.frames[0]?.imageUrl,
+        folderPath: `${userId}/${requestId}/video-clips`
+      })
+      
+      // Update the final video with the S3 URL
+      setGeneratedVideo(prev => prev ? {
+        ...prev,
+        finalVideoUrl: convertS3VideoUrlToProxy(uploadResult.publicUrl)
+      } : null)
+      
+      console.log(`Final video auto-saved to:`, uploadResult.publicUrl)
+      showToast.success(`Auto-saved final video to ${userId}/${requestId}/video-clips/`)
+      
+    } catch (error) {
+      console.error('Error auto-saving final video:', error)
+      showToast.error(`Failed to auto-save final video: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setAutoSaving(false)
     }
   }
 
@@ -761,7 +924,9 @@ Mood: ${fullStory.mood}`:
         setCurrentStep("clips-ready")
         break
       case "input":
-        location.href = "/"
+        if (typeof window !== 'undefined') {
+          location.href = "/"
+        }
         break
       default:
         setCurrentStep("input")
@@ -1023,6 +1188,24 @@ Mood: ${fullStory.mood}`:
                             src={generatedFrames[selectedFrameIndex].imageUrl}
                             alt={`Frame ${selectedFrameIndex + 1}`}
                             className="max-w-full max-h-full object-contain"
+                            onLoad={() => console.log(`Frame ${selectedFrameIndex + 1} loaded successfully`)}
+                            onError={(e) => {
+                              console.error(`Error loading frame ${selectedFrameIndex + 1}:`, e)
+                              // Try to convert to proxy URL if it's a direct S3 URL
+                              const currentUrl = generatedFrames[selectedFrameIndex].imageUrl
+                              if (currentUrl.includes('amazonaws.com') && !currentUrl.includes('/api/proxy_s3_image')) {
+                                const proxyUrl = convertS3UrlToProxy(currentUrl)
+                                if (proxyUrl !== currentUrl) {
+                                  // Update the frame with proxy URL
+                                  const updatedFrames = [...generatedFrames]
+                                  updatedFrames[selectedFrameIndex] = {
+                                    ...updatedFrames[selectedFrameIndex],
+                                    imageUrl: proxyUrl
+                                  }
+                                  setGeneratedFrames(updatedFrames)
+                                }
+                              }
+                            }}
                           />
                         ) : (
                           <div className="text-center space-y-2">
@@ -1100,6 +1283,23 @@ Mood: ${fullStory.mood}`:
                                   src={frame.imageUrl}
                                   alt={`Frame ${index + 1}`}
                                   className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    console.error(`Error loading thumbnail ${index + 1}:`, e)
+                                    // Try to convert to proxy URL if it's a direct S3 URL
+                                    const currentUrl = frame.imageUrl
+                                    if (currentUrl.includes('amazonaws.com') && !currentUrl.includes('/api/proxy_s3_image')) {
+                                      const proxyUrl = convertS3UrlToProxy(currentUrl)
+                                      if (proxyUrl !== currentUrl) {
+                                        // Update the frame with proxy URL
+                                        const updatedFrames = [...generatedFrames]
+                                        updatedFrames[index] = {
+                                          ...updatedFrames[index],
+                                          imageUrl: proxyUrl
+                                        }
+                                        setGeneratedFrames(updatedFrames)
+                                      }
+                                    }
+                                  }}
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
@@ -1179,15 +1379,19 @@ Mood: ${fullStory.mood}`:
                                 </>
                               )}
                             </Button>
-                            <Button 
-                              id="upload-frames-to-supabase-btn"
-                              onClick={uploadFramesToSupabase}
-                              variant="outline"
-                              className="px-8"
-                            >
-                              <Upload className="h-4 w-4 mr-2" />
-                              Save Frames
-                            </Button>
+                            <div className="flex items-center gap-2 text-sm">
+                              {autoSaving ? (
+                                <div className="flex items-center gap-2 text-blue-600">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  Auto-saving to {userId}/{requestId}/reference-frames/...
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 text-green-600">
+                                  <CheckCircle className="h-4 w-4" />
+                                  Auto-saved to {userId}/{requestId}/reference-frames/
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </>
                       ) : (
@@ -1209,9 +1413,44 @@ Mood: ${fullStory.mood}`:
                               <Button 
                                 variant="outline" 
                                 size="sm"
+                                disabled={recoveringFrames}
+                                onClick={async () => {
+                                  // Try to recover frames from S3 first
+                                  const currentSession = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('currentSession') : null
+                                  if (currentSession) {
+                                    try {
+                                      const sessionData = JSON.parse(currentSession)
+                                      if (sessionData.userId) {
+                                        await attemptFrameRecovery(sessionData.sessionId, sessionData.userId)
+                                        return
+                                      }
+                                    } catch (error) {
+                                      console.error('Error parsing session data:', error)
+                                    }
+                                  }
+                                  // If recovery fails, clear session
+                                  if (typeof window !== 'undefined' && window.localStorage) {
+                                    localStorage.removeItem('currentSession')
+                                  }
+                                  setGeneratedFrames([])
+                                  setCurrentStep("input")
+                                }}
+                              >
+                                {recoveringFrames ? (
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                )}
+                                {recoveringFrames ? 'Recovering...' : 'Recover from S3'}
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
                                 onClick={() => {
                                   // Clear any old session data
-                                  localStorage.removeItem('currentSession')
+                                  if (typeof window !== 'undefined' && window.localStorage) {
+                                    localStorage.removeItem('currentSession')
+                                  }
                                   setGeneratedFrames([])
                                   setCurrentStep("input")
                                 }}
@@ -1345,7 +1584,7 @@ Mood: ${fullStory.mood}`:
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => window.open(clip.videoUrl, '_blank')}
+                              onClick={() => openVideoPlayer(clip.videoUrl, `Clip ${clip.id} - Frame ${clip.startFrame + 1}`)}
                               className="flex-1 h-8"
                             >
                               <Play className="h-3 w-3" />
@@ -1355,7 +1594,7 @@ Mood: ${fullStory.mood}`:
                               variant="destructive"
                               size="sm"
                               onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete clip ${clip.id}?`)) {
+                                if (typeof window !== 'undefined' && window.confirm(`Are you sure you want to delete clip ${clip.id}?`)) {
                                   setVideoClips(prev => prev.filter(c => c.id !== clip.id))
                                 }
                               }}
@@ -1411,7 +1650,7 @@ Mood: ${fullStory.mood}`:
                                     result = await response;
                                   // Upload the retry clip to Supabase
                                   try {
-                                    const currentSession = localStorage.getItem('currentSession')
+                                    const currentSession = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('currentSession') : null
                                     const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
                                     
                                     console.log(`Uploading retry video clip ${clip.id} to Supabase...`)
@@ -1489,15 +1728,19 @@ Mood: ${fullStory.mood}`:
                       </>
                     )}
                   </Button> */}
-                  <Button 
-                    id="upload-clips-to-supabase-btn"
-                    onClick={uploadVideoClipsToSupabase}
-                    disabled={videoClips.filter(c => c.status === 'completed').length === 0}
-                    variant="outline"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Clips to S3
-                  </Button>
+                  <div className="flex items-center gap-2 text-sm">
+                    {autoSaving ? (
+                      <div className="flex items-center gap-2 text-blue-600">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Auto-saving clips to {userId}/{requestId}/video-clips/...
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-green-600">
+                        <CheckCircle className="h-4 w-4" />
+                        Auto-saved clips to {userId}/{requestId}/video-clips/
+                      </div>
+                    )}
+                  </div>
                   <Button variant="outline" onClick={resetGeneration}>
                     Start Over
                   </Button>
@@ -1557,7 +1800,24 @@ Mood: ${fullStory.mood}`:
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
-                    <video className="w-full h-full" autoPlay muted loop src={generatedVideo.finalVideoUrl} />
+                    <video 
+                      className="w-full h-full" 
+                      autoPlay 
+                      muted 
+                      loop 
+                      src={generatedVideo.finalVideoUrl ? convertS3VideoUrlToProxy(generatedVideo.finalVideoUrl) : undefined}
+                      onError={(e) => {
+                        console.error('Error loading final video:', e)
+                        // Try to convert to proxy URL if it's a direct S3 URL
+                        if (generatedVideo.finalVideoUrl && generatedVideo.finalVideoUrl.includes('amazonaws.com')) {
+                          const proxyUrl = convertS3VideoUrlToProxy(generatedVideo.finalVideoUrl)
+                          if (proxyUrl !== generatedVideo.finalVideoUrl) {
+                            // Update the video element with proxy URL
+                            e.currentTarget.src = proxyUrl
+                          }
+                        }
+                      }}
+                    />
                     {/* <div className="text-center space-y-2">
                       <Video className="h-12 w-12 mx-auto text-gray-400" />
                       <p className="text-sm text-gray-600">Final Merged Video</p>
@@ -1569,7 +1829,11 @@ Mood: ${fullStory.mood}`:
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => window.open(generatedVideo.finalVideoUrl, '_blank')}
+                          onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          window.open(generatedVideo.finalVideoUrl, '_blank')
+                        }
+                      }}
                           className="mt-2"
                         >
                           <Play className="h-3 w-3 mr-1" />
@@ -1588,16 +1852,28 @@ Mood: ${fullStory.mood}`:
                       <Download className="h-4 w-4 mr-2" />
                       Download MP4
                     </Button>
-                    <Button 
-                      id="upload-final-video-to-supabase-btn"
-                      onClick={uploadFinalVideoToSupabase}
+                    <Button
+                      onClick={() => openVideoPlayer(generatedVideo.finalVideoUrl!, 'Final Generated Video')}
                       disabled={!generatedVideo.finalVideoUrl}
                       variant="outline"
+                      className="flex-1"
                     >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload to Inventory
-                      
+                      <Play className="h-4 w-4 mr-2" />
+                      Play Video
                     </Button>
+                    <div className="flex items-center gap-2 text-sm">
+                      {autoSaving ? (
+                        <div className="flex items-center gap-2 text-blue-600">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Auto-saving to {userId}/{requestId}/video-clips/...
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-green-600">
+                          <CheckCircle className="h-4 w-4" />
+                          Auto-saved to {userId}/{requestId}/video-clips/
+                        </div>
+                      )}
+                    </div>
                     <Button variant="outline" onClick={resetGeneration}>
                       Create New Video
                     </Button>
@@ -1608,6 +1884,60 @@ Mood: ${fullStory.mood}`:
           )}
         </div>
       </div>
+
+      {/* Video Player Modal */}
+      {videoPlayerModal.isOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            // Close modal when clicking outside
+            if (e.target === e.currentTarget) {
+              closeVideoPlayer()
+            }
+          }}
+          onKeyDown={(e) => {
+            // Close modal with Escape key
+            if (e.key === 'Escape') {
+              closeVideoPlayer()
+            }
+          }}
+          tabIndex={-1}
+        >
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">{videoPlayerModal.title}</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={closeVideoPlayer}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <div className="aspect-video bg-black rounded-lg overflow-hidden">
+                <video
+                  className="w-full h-full"
+                  controls
+                  autoPlay
+                  src={videoPlayerModal.videoUrl}
+                  onError={(e) => {
+                    console.error('Error loading video in modal:', e)
+                    // Try to convert to proxy URL if it's a direct S3 URL
+                    if (videoPlayerModal.videoUrl.includes('amazonaws.com') && !videoPlayerModal.videoUrl.includes('/api/proxy_s3_video')) {
+                      const proxyUrl = convertS3VideoUrlToProxy(videoPlayerModal.videoUrl)
+                      if (proxyUrl !== videoPlayerModal.videoUrl) {
+                        e.currentTarget.src = proxyUrl
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 

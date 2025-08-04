@@ -16,33 +16,49 @@ interface UploadImageResult {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageData, frameId, isUserUpload = false } = await request.json()
+    const { imageData, frameId, isUserUpload = false, folderPath } = await request.json()
     
     if (!imageData) {
       return NextResponse.json({ error: "Image data is required" }, { status: 400 })
     }
 
-    // Generate a unique user ID for this session (in production, use actual user auth)
-    const userId: string = process.env.USER_ID || 'user';
-    
-    // Determine upload type based on whether it's a user upload or generated frame
-    const uploadType: 'reference-frames' | 'user-uploads' = isUserUpload ? 'user-uploads' : 'reference-frames';
-    
-    // Upload to S3
-    const result = await uploadImageToS3({
-      imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
-      userId: userId,
-      type: uploadType,
-      filename: `frame_${frameId}_${Date.now()}.png`
-    })
-    
-    return NextResponse.json({
-      imageUrl: result.publicUrl,
-      frameId: frameId,
-      userId: userId,
-      success: true,
-      s3Key: result.key
-    })
+    // Support custom folder path for new structure or fallback to old structure
+    if (folderPath) {
+      // New folder structure: <userid>/<requestid>/reference-frames/
+      const result = await uploadImageToS3({
+        imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
+        userId: folderPath, // Use folderPath directly as it contains the full path
+        type: 'reference-frames', // This will be ignored when userId contains full path
+        filename: `frame_${frameId}_${Date.now()}.png`
+      })
+      
+      return NextResponse.json({
+        imageUrl: result.publicUrl,
+        frameId: frameId,
+        userId: folderPath,
+        success: true,
+        s3Key: result.key
+      })
+    } else {
+      // Legacy folder structure
+      const userId: string = process.env.USER_ID || 'user';
+      const uploadType: 'reference-frames' | 'user-uploads' = isUserUpload ? 'user-uploads' : 'reference-frames';
+      
+      const result = await uploadImageToS3({
+        imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
+        userId: userId,
+        type: uploadType,
+        filename: `frame_${frameId}_${Date.now()}.png`
+      })
+      
+      return NextResponse.json({
+        imageUrl: result.publicUrl,
+        frameId: frameId,
+        userId: userId,
+        success: true,
+        s3Key: result.key
+      })
+    }
 
   } catch (error) {
     console.error('Error uploading image to S3:', error)

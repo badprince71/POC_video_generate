@@ -60,8 +60,10 @@ interface SessionData {
 export default function MediaLibraryPage() {
   const [images, setImages] = useState<MediaItem[]>([])
   const [videos, setVideos] = useState<MediaItem[]>([])
-  const [sessions, setSessions] = useState<SessionData[]>([])
   const [loading, setLoading] = useState(true)
+  const [groupBySession, setGroupBySession] = useState(false)
+  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<SessionData[]>([])
   const [error, setError] = useState<string | null>(null)
   const [selectedTab, setSelectedTab] = useState('images')
   const [organizationMode, setOrganizationMode] = useState<'type' | 'folder'>('type')
@@ -230,6 +232,78 @@ export default function MediaLibraryPage() {
     fetchUserMedia()
   }
 
+  // Helper function to extract request ID from S3 key
+  const extractRequestId = (key: string): string | null => {
+    // New structure: <userId>/<requestId>/<folder>/filename
+    const parts = key.split('/')
+    if (parts.length >= 3) {
+      return parts[1] // requestId is the second part
+    }
+    return null
+  }
+
+  // Helper function to get folder display name
+  const getFolderDisplayName = (key: string, folder: string): string => {
+    const requestId = extractRequestId(key)
+    if (requestId) {
+      return `${folder.replace('-', ' ')} (${requestId.substring(0, 8)}...)`
+    }
+    return folder.replace('-', ' ')
+  }
+
+  // Helper function to get folder tooltip
+  const getFolderTooltip = (key: string, folder: string): string => {
+    const requestId = extractRequestId(key)
+    if (requestId) {
+      return `Session: ${requestId}\nFolder: ${folder.replace('-', ' ')}`
+    }
+    return `Folder: ${folder.replace('-', ' ')}`
+  }
+
+  // Helper function to get all unique sessions from media items
+  const getAvailableSessions = (): { requestId: string; count: number; lastModified: Date }[] => {
+    const sessionMap = new Map<string, { count: number; lastModified: Date }>()
+    
+    const allItems = [...images, ...videos]
+    allItems.forEach(item => {
+      const requestId = extractRequestId(item.key)
+      if (requestId) {
+        const existing = sessionMap.get(requestId)
+        const itemDate = new Date(item.created_at || '')
+        
+        if (existing) {
+          existing.count++
+          if (itemDate > existing.lastModified) {
+            existing.lastModified = itemDate
+          }
+        } else {
+          sessionMap.set(requestId, { count: 1, lastModified: itemDate })
+        }
+      }
+    })
+    
+    return Array.from(sessionMap.entries())
+      .map(([requestId, data]) => ({ requestId, ...data }))
+      .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())
+  }
+
+  // Helper function to filter media by session
+  const getFilteredMedia = (): { images: MediaItem[]; videos: MediaItem[] } => {
+    if (!selectedSession) {
+      return { images, videos }
+    }
+    
+    const filterBySession = (item: MediaItem) => {
+      const requestId = extractRequestId(item.key)
+      return requestId === selectedSession
+    }
+    
+    return {
+      images: images.filter(filterBySession),
+      videos: videos.filter(filterBySession)
+    }
+  }
+
   // Enhanced Media Card Component
   const MediaCard = ({ item }: { item: MediaItem }) => (
     <Card className="group hover:shadow-lg transition-all duration-200">
@@ -301,8 +375,9 @@ export default function MediaLibraryPage() {
             <Badge 
               variant="secondary" 
               className="absolute top-2 left-2 text-xs"
+              title={getFolderTooltip(item.key, item.folder)}
             >
-              {item.folder.replace('-', ' ')}
+              {getFolderDisplayName(item.key, item.folder)}
             </Badge>
           )}
           
@@ -492,6 +567,47 @@ export default function MediaLibraryPage() {
 
           {/* Media Tabs */}
           <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
+            {/* Session Selector */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="groupBySession"
+                    checked={groupBySession}
+                    onChange={(e) => setGroupBySession(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="groupBySession" className="text-sm font-medium text-gray-700">
+                    Group by Session
+                  </label>
+                </div>
+                
+                {groupBySession && (
+                  <select
+                    value={selectedSession || ''}
+                    onChange={(e) => setSelectedSession(e.target.value || null)}
+                    className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Sessions</option>
+                    {getAvailableSessions().map((session) => (
+                      <option key={session.requestId} value={session.requestId}>
+                        {session.requestId.substring(0, 8)}... ({session.count} items)
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              
+              <div className="text-sm text-gray-600">
+                {groupBySession && selectedSession ? (
+                  <span>Showing session: {selectedSession.substring(0, 8)}...</span>
+                ) : (
+                  <span>Showing all media</span>
+                )}
+              </div>
+            </div>
+
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="images" className="flex items-center gap-2">
                 <FileImage className="h-4 w-4" />
@@ -508,85 +624,34 @@ export default function MediaLibraryPage() {
             </TabsList>
 
             <TabsContent value="images" className="space-y-4">
-              {images.length === 0 ? (
-                <Card>
-                  <CardContent className="p-12 text-center">
-                    <FileImage className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                      No images found
-                    </h3>
-                    <p className="text-gray-600 mb-6">
-                      Upload some images to see them here.
-                    </p>
-                    <Link href="/">
-                      <Button>
-                        <FileImage className="h-4 w-4 mr-2" />
-                        Generate Images
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {images.map((image) => (
-                    <Card key={image.id} className="overflow-hidden">
-                      <CardContent className="p-0">
-                        <div className="aspect-square relative group">
-                          <Image
-                            src={image.url}
-                            alt={image.name}
-                            fill
-                            className="object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement
-                              console.error(`Failed to load grid image: ${image.name}`, {
-                                url: image.url,
-                                key: image.key
-                              })
-                              target.src = '/placeholder.svg'
-                            }}
-                            onLoad={() => {
-                              console.log(`Successfully loaded grid image: ${image.name}`)
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => setSelectedItem(image)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => downloadFile(image)}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => deleteFile(image)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-3">
-                          <p className="text-sm font-medium truncate">{image.name}</p>
-                          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
-                            <span>{formatFileSize(image.size)}</span>
-                            <span>{formatDate(image.created_at)}</span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const { images: filteredImages } = getFilteredMedia()
+                return filteredImages.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-12 text-center">
+                      <FileImage className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                        No images found
+                      </h3>
+                      <p className="text-gray-600 mb-6">
+                        {selectedSession ? 'No images found for this session.' : 'Upload some images to see them here.'}
+                      </p>
+                      <Link href="/">
+                        <Button>
+                          <FileImage className="h-4 w-4 mr-2" />
+                          Generate Images
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {filteredImages.map((image) => (
+                      <MediaCard key={image.id} item={image} />
+                    ))}
+                  </div>
+                )
+              })()}
             </TabsContent>
 
             <TabsContent value="videos" className="space-y-4">

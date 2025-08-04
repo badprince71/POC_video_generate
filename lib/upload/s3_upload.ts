@@ -120,8 +120,17 @@ export async function uploadImageToS3({
     const buffer = Buffer.from(imageData, 'base64');
 
     // Create S3 key with folder structure
-    const folder = S3_FOLDERS[type];
-    const key = `${folder}/${userId}/${filename}`;
+    // If userId contains slashes, it's a custom folder path, use it directly
+    // Otherwise, use the standard folder mapping
+    let key: string;
+    if (userId.includes('/')) {
+      // Custom folder path already includes the folder structure
+      key = `${userId}/${filename}`;
+    } else {
+      // Standard folder mapping
+      const folder = S3_FOLDERS[type];
+      key = `${folder}/${userId}/${filename}`;
+    }
 
     // Upload directly with buffer
     console.log(`Uploading image to S3: ${key}`);
@@ -137,13 +146,15 @@ export async function uploadImageToS3({
 
     await s3Client.send(command);
     
-    // Construct public URL
+    // Construct public URL and proxy URL
     const publicUrl = `https://${BUCKET_NAME}.s3.us-east-1.amazonaws.com/${key}`;
+    const proxyUrl = `/api/proxy_s3_image?key=${encodeURIComponent(key)}`;
     
     console.log(`✓ Successfully uploaded image to S3: ${publicUrl}`);
+    console.log(`✓ Proxy URL available at: ${proxyUrl}`);
     
     return {
-      publicUrl,
+      publicUrl: proxyUrl, // Use proxy URL instead of direct S3 URL
       key
     };
   } catch (error) {
@@ -163,8 +174,17 @@ export async function uploadVideoToS3({
 }: UploadVideoToS3Params): Promise<S3UploadResult> {
   try {
     // Create S3 key with folder structure
-    const s3Folder = S3_FOLDERS[folder];
-    const key = `${s3Folder}/${userId}/${filename}`;
+    // If userId contains slashes, it's a custom folder path, use it directly
+    // Otherwise, use the standard folder mapping
+    let key: string;
+    if (userId.includes('/')) {
+      // Custom folder path already includes the folder structure
+      key = `${userId}/${filename}`;
+    } else {
+      // Standard folder mapping
+      const s3Folder = S3_FOLDERS[folder];
+      key = `${s3Folder}/${userId}/${filename}`;
+    }
 
     // Convert blob to buffer to avoid streaming issues
     console.log(`Uploading video to S3: ${key}`);
@@ -182,13 +202,15 @@ export async function uploadVideoToS3({
 
     await s3Client.send(command);
     
-    // Construct public URL
+    // Construct public URL and proxy URL
     const publicUrl = `https://${BUCKET_NAME}.s3.us-east-1.amazonaws.com/${key}`;
+    const proxyUrl = `/api/proxy_s3_video?key=${encodeURIComponent(key)}`;
     
     console.log(`✓ Successfully uploaded video to S3: ${publicUrl}`);
+    console.log(`✓ Proxy URL available at: ${proxyUrl}`);
     
     return {
-      publicUrl,
+      publicUrl: proxyUrl, // Use proxy URL instead of direct S3 URL
       key
     };
   } catch (error) {

@@ -10,7 +10,10 @@ import { S3_CONFIG } from '@/lib/upload/s3_config'
 // Initialize S3 client
 const s3Client = new S3Client({
   region: S3_CONFIG.region,
-  credentials: S3_CONFIG.credentials,
+  credentials: S3_CONFIG.credentials.accessKeyId && S3_CONFIG.credentials.secretAccessKey ? {
+    accessKeyId: S3_CONFIG.credentials.accessKeyId,
+    secretAccessKey: S3_CONFIG.credentials.secretAccessKey
+  } : undefined,
 })
 
 export interface S3MediaItem {
@@ -45,83 +48,132 @@ export async function listMediaFiles(userId?: string): Promise<{
   videos: S3MediaItem[]
   all: S3MediaItem[]
 }> {
-  const folders = ['reference-frames', 'user-uploads', 'video-clips'] as const
   const allItems: S3MediaItem[] = []
 
   try {
-    // Fetch from all folders
-    for (const folder of folders) {
-      const prefix = userId ? `${folder}/${userId}/` : `${folder}/`
+    if (userId) {
+      // New folder structure: <userId>/<requestId>/<reference-frames>
+      // List all request IDs for this user
+      const userPrefix = `${userId}/`
       
-      const command = new ListObjectsV2Command({
+      const userCommand = new ListObjectsV2Command({
         Bucket: S3_CONFIG.bucket,
-        Prefix: prefix,
-        MaxKeys: 1000, // Adjust as needed
+        Prefix: userPrefix,
+        Delimiter: '/',
+        MaxKeys: 1000,
       })
 
-      const response = await s3Client.send(command)
+      const userResponse = await s3Client.send(userCommand)
       
-      if (response.Contents) {
-        for (const object of response.Contents) {
-          if (!object.Key || !object.Size || object.Key.endsWith('/')) continue
-
-          const filename = object.Key.split('/').pop() || ''
-          const type = getFileType(filename)
-
-          // Generate presigned URL for viewing (valid for 1 hour)
-          let viewUrl: string
-          let downloadUrl: string
+      if (userResponse.CommonPrefixes) {
+        // For each request ID, check for reference-frames and video-clips folders
+        for (const prefix of userResponse.CommonPrefixes) {
+          if (!prefix.Prefix) continue
           
-          try {
-            const viewCommand = new GetObjectCommand({
-              Bucket: S3_CONFIG.bucket,
-              Key: object.Key,
-            })
-            viewUrl = await getSignedUrl(s3Client, viewCommand, { expiresIn: 3600 })
-
-            // Generate presigned URL for downloading (valid for 1 hour)
-            const downloadCommand = new GetObjectCommand({
-              Bucket: S3_CONFIG.bucket,
-              Key: object.Key,
-              ResponseContentDisposition: `attachment; filename="${filename}"`,
-            })
-            downloadUrl = await getSignedUrl(s3Client, downloadCommand, { expiresIn: 3600 })
-          } catch (urlError) {
-            console.error(`Failed to generate presigned URLs for ${object.Key}:`, urlError)
-            // Skip this item if we can't generate URLs
-            continue
-          }
-
-          allItems.push({
-            key: object.Key,
-            name: filename,
-            size: object.Size,
-            lastModified: object.LastModified || new Date(),
-            type,
-            folder,
-            url: viewUrl,
-            downloadUrl,
-          })
+          const requestId = prefix.Prefix.replace(userPrefix, '').replace('/', '')
+          
+          // Check for reference-frames folder
+          const framesPrefix = `${userId}/${requestId}/reference-frames/`
+          await listFilesFromPrefix(framesPrefix, 'reference-frames', allItems)
+          
+          // Check for video-clips folder
+          const clipsPrefix = `${userId}/${requestId}/video-clips/`
+          await listFilesFromPrefix(clipsPrefix, 'video-clips', allItems)
         }
+      }
+      
+      // Also check for old structure: <folder>/<userId>/
+      const oldFolders = ['reference-frames', 'user-uploads', 'video-clips'] as const
+      for (const folder of oldFolders) {
+        const oldPrefix = `${folder}/${userId}/`
+        await listFilesFromPrefix(oldPrefix, folder, allItems)
+      }
+    } else {
+      // If no userId provided, list all files from all folders (old structure)
+      const oldFolders = ['reference-frames', 'user-uploads', 'video-clips'] as const
+      for (const folder of oldFolders) {
+        const prefix = `${folder}/`
+        await listFilesFromPrefix(prefix, folder, allItems)
       }
     }
 
-    // Sort by last modified (newest first)
+    // Sort by last modified date (newest first)
     allItems.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime())
 
-    // Separate images and videos
-    const images = allItems.filter(item => item.type === 'image')
-    const videos = allItems.filter(item => item.type === 'video')
+    return {
+      images: allItems.filter(item => item.type === 'image'),
+      videos: allItems.filter(item => item.type === 'video'),
+      all: allItems
+    }
 
-    return { images, videos, all: allItems }
   } catch (error) {
-    console.error('Error listing media files from S3:', error)
-    console.error('S3 Config:', {
-      region: S3_CONFIG.region,
-      bucket: S3_CONFIG.bucket,
-      hasCredentials: !!(S3_CONFIG.credentials.accessKeyId && S3_CONFIG.credentials.secretAccessKey)
+    console.error('Error listing media files:', error)
+    return {
+      images: [],
+      videos: [],
+      all: []
+    }
+  }
+}
+
+/**
+ * Helper function to list files from a specific prefix
+ */
+async function listFilesFromPrefix(prefix: string, folder: 'reference-frames' | 'user-uploads' | 'video-clips', allItems: S3MediaItem[]): Promise<void> {
+  try {
+    const command = new ListObjectsV2Command({
+      Bucket: S3_CONFIG.bucket,
+      Prefix: prefix,
+      MaxKeys: 1000,
     })
-    throw new Error(`Failed to fetch media files from S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
+
+    const response = await s3Client.send(command)
+    
+    if (response.Contents) {
+      for (const object of response.Contents) {
+        if (!object.Key || !object.Size || object.Key.endsWith('/')) continue
+
+        const filename = object.Key.split('/').pop() || ''
+        const type = getFileType(filename)
+
+        // Generate presigned URL for viewing (valid for 1 hour)
+        let viewUrl: string
+        let downloadUrl: string
+        
+        try {
+          const viewCommand = new GetObjectCommand({
+            Bucket: S3_CONFIG.bucket,
+            Key: object.Key,
+          })
+          viewUrl = await getSignedUrl(s3Client, viewCommand, { expiresIn: 3600 })
+
+          // Generate presigned URL for downloading (valid for 1 hour)
+          const downloadCommand = new GetObjectCommand({
+            Bucket: S3_CONFIG.bucket,
+            Key: object.Key,
+            ResponseContentDisposition: `attachment; filename="${filename}"`,
+          })
+          downloadUrl = await getSignedUrl(s3Client, downloadCommand, { expiresIn: 3600 })
+        } catch (urlError) {
+          console.error(`Failed to generate presigned URLs for ${object.Key}:`, urlError)
+          // Skip this item if we can't generate URLs
+          continue
+        }
+
+        allItems.push({
+          key: object.Key,
+          name: filename,
+          size: object.Size,
+          lastModified: object.LastModified || new Date(),
+          type,
+          folder,
+          url: viewUrl,
+          downloadUrl
+        })
+      }
+    }
+  } catch (error) {
+    console.error(`Error listing files from prefix ${prefix}:`, error)
   }
 }
 

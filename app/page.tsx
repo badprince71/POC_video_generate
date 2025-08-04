@@ -90,6 +90,27 @@ export default function FrameGenerationPage() {
   const [storyGenerationProgress, setStoryGenerationProgress] = useState(0)
   const [isEditingStory, setIsEditingStory] = useState(false)
 
+  // Function to convert S3 URLs to proxy URLs to avoid CORS issues
+  const convertS3UrlToProxy = (url: string): string => {
+    if (url.includes('amazonaws.com') && !url.includes('/api/proxy_s3_image')) {
+      // Extract the key from the S3 URL
+      const urlParts = url.split('.com/')
+      if (urlParts.length > 1) {
+        const key = urlParts[1]
+        return `/api/proxy_s3_image?key=${encodeURIComponent(key)}`
+      }
+    }
+    return url
+  }
+
+  // Function to ensure frames have accessible URLs
+  const ensureFrameUrls = (frames: VideoFrame[]): VideoFrame[] => {
+    return frames.map(frame => ({
+      ...frame,
+      imageUrl: convertS3UrlToProxy(frame.imageUrl)
+    }))
+  }
+
   // Utility function to upload images to cloud storage
   const uploadImageToCloud = async (imageData: string, frameId: number): Promise<{ imageUrl: string, userId: string }> => {
     try {
@@ -431,8 +452,8 @@ export default function FrameGenerationPage() {
       // Create frames array in correct order
       const newFrames = sortedResults.map(result => result.frame)
       
-      // Update state with all frames at once
-      setGeneratedFrames(newFrames)
+      // Update state with all frames at once, ensuring S3 URLs are converted to proxy URLs
+      setGeneratedFrames(ensureFrameUrls(newFrames))
       setFrameGenerationProgress(100)
       
       // Save frames to database using utility function
@@ -532,8 +553,19 @@ export default function FrameGenerationPage() {
         uploadButton.setAttribute('disabled', 'true')
       }
 
+      // Check if frames already have S3 URLs to avoid unnecessary re-upload
+      const framesNeedingUpload = generatedFrames.filter(frame => 
+        !frame.imageUrl.includes('amazonaws.com') && 
+        !frame.imageUrl.includes('s3.')
+      )
+      
+      if (framesNeedingUpload.length === 0) {
+        alert('All frames already have S3 URLs!')
+        return
+      }
+
       // Upload each frame to S3
-      const uploadPromises = generatedFrames.map(async (frame, index) => {
+      const uploadPromises = framesNeedingUpload.map(async (frame, index) => {
         const frameNumber = (index + 1).toString().padStart(2, '0')
         const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
         
@@ -570,19 +602,25 @@ export default function FrameGenerationPage() {
         }
 
         console.log(`Frame ${frame.id} uploaded to S3:`, result.imageUrl)
-        return result
+        return { frameId: frame.id, imageUrl: result.imageUrl }
       })
 
       // Wait for all uploads to complete
       const results = await Promise.all(uploadPromises)
       
-      // Update frame URLs with S3 URLs
-      const updatedFrames = generatedFrames.map((frame, index) => ({
-        ...frame,
-        imageUrl: results[index].imageUrl
-      }))
+      // Update frame URLs with S3 URLs, but preserve existing frames
+      const updatedFrames = generatedFrames.map((frame) => {
+        const uploadResult = results.find(r => r.frameId === frame.id)
+        if (uploadResult) {
+          return {
+            ...frame,
+            imageUrl: uploadResult.imageUrl // This will already be a proxy URL from the updated S3 upload function
+          }
+        }
+        return frame // Keep existing frame if no upload result found
+      })
       
-      setGeneratedFrames(updatedFrames)
+      setGeneratedFrames(ensureFrameUrls(updatedFrames))
 
       // Save updated frames to database
       try {
@@ -590,13 +628,15 @@ export default function FrameGenerationPage() {
         console.log(`Updated frames saved to database. Session: ${sessionId}`)
       } catch (error) {
         console.error('Failed to save updated frames to database:', error)
+        // Don't throw error here - frames are still available in state
       }
 
-      alert(`Successfully uploaded ${generatedFrames.length} images to S3!`)
+      alert(`Successfully uploaded ${results.length} images to S3!`)
       
     } catch (error) {
       console.error('Error uploading images to S3:', error)
       alert(`Failed to upload images to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      // Don't clear frames on error - keep existing frames
     } finally {
       // Reset button state
       const uploadButton = document.getElementById('upload-to-s3-btn')

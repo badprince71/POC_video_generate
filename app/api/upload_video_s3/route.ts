@@ -7,6 +7,7 @@ export async function POST(request: NextRequest) {
     const videoFile = formData.get('video') as File
     const userId = formData.get('userId') as string
     const filename = formData.get('filename') as string
+    const folderPath = formData.get('folderPath') as string
     
     if (!videoFile) {
       return NextResponse.json({ error: "Video file is required" }, { status: 400 })
@@ -21,12 +22,12 @@ export async function POST(request: NextRequest) {
     // Convert File to Blob for upload
     const videoBlob = new Blob([await videoFile.arrayBuffer()], { type: videoFile.type })
     
-    // Upload to S3
+    // Upload to S3 with custom folder path if provided
     const result = await uploadVideoToS3({
       videoBlob,
-      userId,
+      userId: folderPath || userId, // Use folderPath if provided, otherwise fallback to userId
       filename,
-      folder: 'video-clips'
+      folder: 'video-clips' // Keep folder parameter for non-custom paths
     })
     
     return NextResponse.json({

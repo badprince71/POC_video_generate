@@ -43,6 +43,7 @@ interface UploadMovieParams {
   filename: string
   duration: number
   thumbnail?: string
+  folderPath?: string // New optional parameter for custom folder structure
 }
 
 interface UploadMovieResult {
@@ -122,7 +123,8 @@ export async function uploadMovieToS3({
   userId,
   filename,
   duration,
-  thumbnail
+  thumbnail,
+  folderPath
 }: UploadMovieParams): Promise<UploadMovieResult> {
   try {
     console.log("Uploading movie to S3 via API...", { filename, userId, duration });
@@ -158,6 +160,11 @@ export async function uploadMovieToS3({
     formData.append('video', new File([videoBlob], finalFilename, { type: 'video/mp4' }));
     formData.append('userId', userId);
     formData.append('filename', finalFilename);
+    
+    // Add custom folder path if provided
+    if (folderPath) {
+      formData.append('folderPath', folderPath);
+    }
 
     // Upload via API route instead of direct S3 upload
     const apiResponse = await fetch('/api/upload_video_s3', {
