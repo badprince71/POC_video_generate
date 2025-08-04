@@ -34,6 +34,8 @@ import { uploadVideo, uploadMovieToS3 as uploadMovieToStorage } from "@/lib/uplo
 import { generateVideoClip } from "@/lib/generate_video_clips/generate_clips"
 import { concatenateVideos, blobToBase64 } from "@/lib/utils/video-merge"
 import { showToast, toastMessages } from "@/lib/utils/toast"
+import { useAuth } from "@/lib/auth-context"
+import ProtectedRoute from "@/components/ProtectedRoute"
 
 interface VideoFrame {
   id: number
@@ -85,31 +87,13 @@ interface S3VideoClip {
 type VideoGenerationStep = "input" | "generating-clips" | "clips-ready" | "merging-clips" | "video-ready"
 
 export default function VideoGenerationPage() {
+  const { user } = useAuth()
+  
   // Generate unique request ID for this video generation session
   const [requestId] = useState(() => `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
-  const [userId, setUserId] = useState<string>('')
   
-  // Initialize userId from localStorage after component mounts
-  useEffect(() => {
-    // Check if we're in the browser environment
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const session = localStorage.getItem('currentSession')
-      if (session) {
-        try {
-          const { userId } = JSON.parse(session)
-          setUserId(userId || `user_${Date.now()}`)
-        } catch (error) {
-          console.error('Error parsing session:', error)
-          setUserId(`user_${Date.now()}`)
-        }
-      } else {
-        setUserId(`user_${Date.now()}`)
-      }
-    } else {
-      // Fallback for server-side rendering
-      setUserId(`user_${Date.now()}`)
-    }
-  }, [])
+  // Use authenticated user ID
+  const userId = user?.id || user?.email || 'anonymous'
   
   const [currentStep, setCurrentStep] = useState<VideoGenerationStep>("input")
   const [generatedFrames, setGeneratedFrames] = useState<VideoFrame[]>([])
@@ -219,7 +203,7 @@ export default function VideoGenerationPage() {
         }
 
         // Get current session from localStorage
-        const currentSession = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('currentSession') : null
+        const currentSession = localStorage.getItem('currentSession')
         if (!currentSession) {
           console.log('No current session found. Please generate frames first.')
           // Show user-friendly message
@@ -231,9 +215,7 @@ export default function VideoGenerationPage() {
           sessionData = JSON.parse(currentSession)
         } catch (parseError) {
           console.error('Invalid session data in localStorage:', parseError)
-          if (typeof window !== 'undefined' && window.localStorage) {
-            localStorage.removeItem('currentSession') // Clear corrupted data
-          }
+          localStorage.removeItem('currentSession') // Clear corrupted data
           return
         }
 
@@ -241,9 +223,7 @@ export default function VideoGenerationPage() {
 
         if (!sessionId || !userId) {
           console.error('Incomplete session data:', sessionData)
-          if (typeof window !== 'undefined' && window.localStorage) {
-            localStorage.removeItem('currentSession') // Clear incomplete data
-          }
+          localStorage.removeItem('currentSession') // Clear incomplete data
           return
         }
         
@@ -389,6 +369,7 @@ export default function VideoGenerationPage() {
 
       const response = await fetch('/api/upload_video_s3', {
         method: 'POST',
+        credentials: 'include',
         body: formData
       })
 
@@ -412,8 +393,6 @@ export default function VideoGenerationPage() {
   }
 
   const handleVideoUpload = () => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'video/mp4,video/*'
@@ -432,7 +411,7 @@ export default function VideoGenerationPage() {
       let downloadUrl = clip.downloadUrl
       
       if (!downloadUrl) {
-        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(clip.key)}&download=true`)
+              const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(clip.key)}&download=true`)
         const result = await response.json()
         
         if (!result.success) {
@@ -443,8 +422,6 @@ export default function VideoGenerationPage() {
       }
 
       // Create download link
-      if (typeof window === 'undefined' || typeof document === 'undefined') return
-      
       const link = document.createElement('a')
       link.href = downloadUrl || ''
       link.download = clip.name
@@ -462,7 +439,7 @@ export default function VideoGenerationPage() {
   }
 
   const deleteVideoClip = async (clip: S3VideoClip) => {
-    if (typeof window === 'undefined' || !window.confirm(`Are you sure you want to delete ${clip.name}?\n\nThis action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete ${clip.name}?\n\nThis action cannot be undone.`)) {
       return
     }
 
@@ -617,9 +594,7 @@ Mood: ${fullStory.mood}`:
 
     } catch (error) {
       console.error('Error during clip generation:', error)
-      if (typeof window !== 'undefined') {
-        alert('Error generating video clips. Please try again.')
-      }
+      alert('Error generating video clips. Please try again.')
       setCurrentStep("input")
     } finally {
       setIsGeneratingClips(false)
@@ -738,8 +713,6 @@ Mood: ${fullStory.mood}`:
   }
 
   const downloadVideo = () => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    
     if (generatedVideo?.finalVideoUrl) {
       const link = document.createElement('a')
       link.href = generatedVideo.finalVideoUrl
@@ -794,6 +767,7 @@ Mood: ${fullStory.mood}`:
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({
             imageData: imageData,
             frameId: frame.id,
@@ -924,9 +898,7 @@ Mood: ${fullStory.mood}`:
         setCurrentStep("clips-ready")
         break
       case "input":
-        if (typeof window !== 'undefined') {
-          location.href = "/"
-        }
+        location.href = "/"
         break
       default:
         setCurrentStep("input")
@@ -1103,7 +1075,8 @@ Mood: ${fullStory.mood}`:
   // )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
       {/* Navigation Header */}
       <nav className="bg-white shadow-sm border-b">
         <div className="max-w-6xl mx-auto px-4 py-3">
@@ -1416,7 +1389,7 @@ Mood: ${fullStory.mood}`:
                                 disabled={recoveringFrames}
                                 onClick={async () => {
                                   // Try to recover frames from S3 first
-                                  const currentSession = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('currentSession') : null
+                                  const currentSession = localStorage.getItem('currentSession')
                                   if (currentSession) {
                                     try {
                                       const sessionData = JSON.parse(currentSession)
@@ -1429,9 +1402,7 @@ Mood: ${fullStory.mood}`:
                                     }
                                   }
                                   // If recovery fails, clear session
-                                  if (typeof window !== 'undefined' && window.localStorage) {
-                                    localStorage.removeItem('currentSession')
-                                  }
+                                  localStorage.removeItem('currentSession')
                                   setGeneratedFrames([])
                                   setCurrentStep("input")
                                 }}
@@ -1448,9 +1419,7 @@ Mood: ${fullStory.mood}`:
                                 size="sm"
                                 onClick={() => {
                                   // Clear any old session data
-                                  if (typeof window !== 'undefined' && window.localStorage) {
-                                    localStorage.removeItem('currentSession')
-                                  }
+                                  localStorage.removeItem('currentSession')
                                   setGeneratedFrames([])
                                   setCurrentStep("input")
                                 }}
@@ -1594,7 +1563,7 @@ Mood: ${fullStory.mood}`:
                               variant="destructive"
                               size="sm"
                               onClick={() => {
-                                if (typeof window !== 'undefined' && window.confirm(`Are you sure you want to delete clip ${clip.id}?`)) {
+                                if (window.confirm(`Are you sure you want to delete clip ${clip.id}?`)) {
                                   setVideoClips(prev => prev.filter(c => c.id !== clip.id))
                                 }
                               }}
@@ -1650,7 +1619,7 @@ Mood: ${fullStory.mood}`:
                                     result = await response;
                                   // Upload the retry clip to Supabase
                                   try {
-                                    const currentSession = typeof window !== 'undefined' && window.localStorage ? localStorage.getItem('currentSession') : null
+                                    const currentSession = localStorage.getItem('currentSession')
                                     const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
                                     
                                     console.log(`Uploading retry video clip ${clip.id} to Supabase...`)
@@ -1829,11 +1798,7 @@ Mood: ${fullStory.mood}`:
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                        if (typeof window !== 'undefined') {
-                          window.open(generatedVideo.finalVideoUrl, '_blank')
-                        }
-                      }}
+                          onClick={() => window.open(generatedVideo.finalVideoUrl, '_blank')}
                           className="mt-2"
                         >
                           <Play className="h-3 w-3 mr-1" />
@@ -1939,5 +1904,6 @@ Mood: ${fullStory.mood}`:
         </div>
       )}
     </div>
+    </ProtectedRoute>
   )
 } 

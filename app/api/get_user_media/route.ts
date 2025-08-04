@@ -4,20 +4,20 @@ import { listMediaFiles, getMediaStats } from '@/lib/services/s3-media-service'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
     const includeStats = searchParams.get('includeStats') === 'true'
 
-    // Note: userId is optional - if not provided, will fetch all media files
-    // For user-specific filtering, you might want to organize by userId in S3 paths
+    // Get user ID from query params or use default
+    const userId = searchParams.get('userId') || 'default'
+    const userEmail = 'default@example.com'
 
-    console.log(`Fetching media files${userId ? ` for user: ${userId}` : ' (all users)'}`)
+    console.log(`Fetching media files for user: ${userId}`)
 
-    // Fetch media files from S3
-    const mediaData = await listMediaFiles(userId || undefined)
+    // Fetch media files from S3 for the authenticated user
+    const mediaData = await listMediaFiles(userId)
     
     let stats = null
     if (includeStats) {
-      stats = await getMediaStats(userId || undefined)
+      stats = await getMediaStats(userId)
     }
 
     const response = {

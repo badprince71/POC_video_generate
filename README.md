@@ -4,9 +4,10 @@ A Next.js application that generates personalized animated videos from user prom
 
 ## Features
 
+- **User Authentication**: Secure sign-up and sign-in using Supabase
 - **Frame Generation**: Create story-driven frames from prompts and images
 - **Video Generation**: Transform frames into smooth animated video clips
-- **Supabase Integration**: Upload and store all media (frames, video clips, final videos) in Supabase
+- **AWS S3 Storage**: Upload and store all media (frames, video clips, final videos) in S3
 - **Story Generation**: AI-powered story creation with scene breakdowns
 - **Media Library**: Organize and manage your generated content
 
@@ -46,10 +47,15 @@ supabase-storage/
 Make sure to set up the following environment variables:
 
 ```env
-# Supabase Configuration
+# Supabase Configuration (for authentication and storage)
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_KEY=your_supabase_service_key
+
+# AWS S3 Configuration (for video storage)
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your-bucket-name-here
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key

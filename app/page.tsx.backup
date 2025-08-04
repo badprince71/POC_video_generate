@@ -5,6 +5,8 @@ import Image from "next/image"
 import Link from "next/link"
 
 import { useState } from "react"
+import { useAuth } from "@/lib/contexts/AuthContext"
+import ProtectedRoute from "@/components/ProtectedRoute"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
@@ -27,9 +29,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { showToast, toastMessages, showError } from "@/lib/utils/toast"
-import ProtectedRoute from "@/components/ProtectedRoute"
-import UserMenu from "@/components/UserMenu"
-import { useAuth } from "@/lib/auth-context"
 
 interface VideoFrame {
   id: number
@@ -47,6 +46,103 @@ interface VideoFrame {
 }
 
 type GenerationStep = "input" | "generating-frames" | "frames-ready"
+
+// FrameViewer component moved outside main component
+const FrameViewer = ({ 
+  frames, 
+  selectedFrameIndex, 
+  setSelectedFrameIndex 
+}: { 
+  frames: VideoFrame[]
+  selectedFrameIndex: number
+  setSelectedFrameIndex: (index: number) => void
+}) => {
+  if (frames.length === 0) return null
+
+  return (
+    <div className="space-y-4">
+      {/* Frame Navigation */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary">{frames.length} frames generated</Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedFrameIndex(Math.max(0, selectedFrameIndex - 1))}
+            disabled={selectedFrameIndex === 0}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-sm text-gray-600">
+            Frame {selectedFrameIndex + 1} of {frames.length}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSelectedFrameIndex(Math.min(frames.length - 1, selectedFrameIndex + 1))}
+            disabled={selectedFrameIndex === frames.length - 1}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      {/* Selected Frame Display */}
+      <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px]">
+        <Image
+          src={frames[selectedFrameIndex]?.imageUrl || "/placeholder.svg"}
+          alt={`Frame ${selectedFrameIndex + 1}`}
+          width={400}
+          height={400}
+          className="max-w-full max-h-full object-contain"
+          onLoad={() => console.log(`Frame ${selectedFrameIndex + 1} loaded successfully`)}
+          onError={() => {
+            console.error(`Error loading frame ${selectedFrameIndex + 1}`)
+          }}
+        />
+      </div>
+
+      {/* Frame Info */}
+      <div className="bg-gray-50 rounded-lg p-3">
+        <div className="flex items-center justify-between mb-2">
+          <Badge variant="outline">{frames[selectedFrameIndex]?.timestamp}</Badge>
+          <span className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</span>
+        </div>
+        <p className="text-sm text-gray-700">{frames[selectedFrameIndex]?.description}</p>
+      </div>
+
+      {/* Frame Thumbnails */}
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">All Generated Frames</h4>
+        <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+          {frames.map((frame, index) => (
+            <button
+              key={frame.id}
+              onClick={() => setSelectedFrameIndex(index)}
+              className={`aspect-square rounded border-2 overflow-hidden transition-all relative bg-gray-100 flex items-center justify-center ${
+                selectedFrameIndex === index
+                  ? "border-blue-500 ring-2 ring-blue-200"
+                  : "border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              <Image
+                src={frame.imageUrl || "/placeholder.svg"}
+                alt={`Frame ${index + 1}`}
+                width={100}
+                height={100}
+                className="max-w-full max-h-full object-contain"
+              />
+              <div className="absolute inset-x-0 bottom-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
+                {frame.timestamp}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function FrameGenerationPage() {
   const { user } = useAuth()
@@ -94,9 +190,6 @@ export default function FrameGenerationPage() {
   const [storyGenerationProgress, setStoryGenerationProgress] = useState(0)
   const [isEditingStory, setIsEditingStory] = useState(false)
 
-  // Get authenticated user ID
-  const userId = user?.id || user?.email || 'anonymous'
-
   // Function to convert S3 URLs to proxy URLs to avoid CORS issues
   const convertS3UrlToProxy = (url: string): string => {
     if (url.includes('amazonaws.com') && !url.includes('/api/proxy_s3_image')) {
@@ -126,7 +219,6 @@ export default function FrameGenerationPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           imageData: imageData,
           frameId: frameId,
@@ -158,12 +250,12 @@ export default function FrameGenerationPage() {
       // Save frames with original URLs (no automatic cloud upload)
       const framesWithOriginalUrls = frames.map((frame) => ({
         ...frame,
-        userId: userId // Using authenticated user ID
+        userId: 'user' // Using consistent userId as per memory[[memory:4826654]]
       }))
 
       // Generate session ID
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      // userId is already defined from useAuth()
+      const userId = 'user' // Using consistent userId as per memory[[memory:4826654]]
 
       // Save frames to database
       const response = await fetch('/api/save_frames', {
@@ -171,7 +263,6 @@ export default function FrameGenerationPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: JSON.stringify({
           frames: framesWithOriginalUrls,
           userId: userId,
@@ -597,7 +688,6 @@ export default function FrameGenerationPage() {
           headers: {
             'Content-Type': 'application/json',
           },
-          credentials: 'include',
           body: JSON.stringify({
             imageData: imageData,
             frameId: frame.id,
@@ -758,40 +848,36 @@ export default function FrameGenerationPage() {
           </div>
         </div>
       </div>
-    )
-  }
-
-  return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
-        {/* Navigation Header */}
-        <nav className="bg-white shadow-sm border-b">
-          <div className="max-w-6xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                  AI Video Generator
-                </h1>
-                <div className="flex items-center gap-4">
-                  <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
-                    <Home className="h-4 w-4" />
-                    Frame Generation
-                  </Link>
-                  <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                    <Video className="h-4 w-4" />
-                    Video Generation
-                  </Link>
-                  
-                  <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                    <FileImage className="h-4 w-4" />
-                    Media Library
-                  </Link>
-                </div>
+    </ProtectedRoute>
+  )
+}
+      {/* Navigation Header */}
+      <nav className="bg-white shadow-sm border-b">
+        <div className="max-w-6xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                AI Video Generator
+              </h1>
+              <div className="flex items-center gap-4">
+                <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
+                  <Home className="h-4 w-4" />
+                  Frame Generation
+                </Link>
+                <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Video className="h-4 w-4" />
+                  Video Generation
+                </Link>
+                
+                <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <FileImage className="h-4 w-4" />
+                  Media Library
+                </Link>
               </div>
-              <UserMenu />
             </div>
           </div>
-        </nav>
+        </div>
+      </nav>
 
       <div className="p-4">
         <div className="max-w-6xl mx-auto space-y-8">
@@ -1280,7 +1366,11 @@ export default function FrameGenerationPage() {
                   </div>
                 ) : currentStep === "frames-ready" ? (
                   <div className="space-y-4">
-                    <FrameViewer frames={generatedFrames} />
+                    <FrameViewer 
+                      frames={generatedFrames} 
+                      selectedFrameIndex={selectedFrameIndex}
+                      setSelectedFrameIndex={setSelectedFrameIndex}
+                    />
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex gap-2">
                       </div>
@@ -1306,6 +1396,5 @@ export default function FrameGenerationPage() {
         </div>
       </div>
     </div>
-    </ProtectedRoute>
   )
 }

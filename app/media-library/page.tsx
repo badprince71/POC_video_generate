@@ -8,6 +8,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Video,
@@ -27,6 +28,9 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react"
+import ProtectedRoute from "@/components/ProtectedRoute"
+import UserMenu from "@/components/UserMenu"
+import { useAuth } from "@/lib/auth-context"
 
 interface MediaItem {
   id: string
@@ -58,6 +62,7 @@ interface SessionData {
 }
 
 export default function MediaLibraryPage() {
+  const { user } = useAuth()
   const [images, setImages] = useState<MediaItem[]>([])
   const [videos, setVideos] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,8 +76,12 @@ export default function MediaLibraryPage() {
   const [viewModalOpen, setViewModalOpen] = useState(false)
   const [viewModalItem, setViewModalItem] = useState<MediaItem | null>(null)
 
-  // Get userId from environment variable (you'll need to set this in your .env.local)
-  const userId : string = process.env.USER_ID || 'user';
+  // Get userId from URL params or authenticated user
+  const [urlUserId, setUrlUserId] = useState<string | null>(null)
+  const [inputUserId, setInputUserId] = useState<string>('')
+  
+  // Use URL parameter, input field, or authenticated user ID
+  const userId = urlUserId || inputUserId || user?.id || user?.email || 'default';
 
   // Group media by folder
   const groupedByFolder = {
@@ -86,7 +95,7 @@ export default function MediaLibraryPage() {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/get_user_media?userId=${userId}&includeStats=true`)
+      const response = await fetch(`/api/get_user_media?includeStats=true&userId=${encodeURIComponent(userId)}`)
       const result = await response.json()
 
       if (!result.success) {
@@ -98,7 +107,7 @@ export default function MediaLibraryPage() {
       // Note: Sessions are no longer fetched from Supabase, but you could integrate with a database if needed
       setSessions([])
       
-      console.log('Media fetched:', {
+      console.log(`Media fetched for user ${userId}:`, {
         images: result.images?.length || 0,
         videos: result.videos?.length || 0,
         total: result.count?.total || 0
@@ -110,6 +119,17 @@ export default function MediaLibraryPage() {
       setLoading(false)
     }
   }
+
+  // Handle URL parameters for user ID
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const userIdParam = urlParams.get('userId')
+      if (userIdParam) {
+        setUrlUserId(userIdParam)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     fetchUserMedia()
@@ -451,37 +471,39 @@ export default function MediaLibraryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
-      {/* Navigation Header */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                AI Video Generator
-              </h1>
-              <div className="flex items-center gap-4">
-                <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <Home className="h-4 w-4" />
-                  Frame Generation
-                </Link>
-                <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <Video className="h-4 w-4" />
-                  Video Generation
-                </Link>
-                <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
-                  <FileImage className="h-4 w-4" />
-                  Media Library
-                </Link>
-                <Link href="/debug-s3" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <AlertCircle className="h-4 w-4" />
-                  Debug S3
-                </Link>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+        {/* Navigation Header */}
+        <nav className="bg-white shadow-sm border-b">
+          <div className="max-w-6xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                  AI Video Generator
+                </h1>
+                <div className="flex items-center gap-4">
+                  <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                    <Home className="h-4 w-4" />
+                    Frame Generation
+                  </Link>
+                  <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                    <Video className="h-4 w-4" />
+                    Video Generation
+                  </Link>
+                  <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
+                    <FileImage className="h-4 w-4" />
+                    Media Library
+                  </Link>
+                  <Link href="/debug-s3" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                    <AlertCircle className="h-4 w-4" />
+                    Debug S3
+                  </Link>
+                </div>
               </div>
+              <UserMenu />
             </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
       <div className="p-4">
         <div className="max-w-6xl mx-auto space-y-8">
@@ -495,7 +517,7 @@ export default function MediaLibraryPage() {
                 Your uploaded images and videos from S3 storage
               </p>
               {/* <p className="text-sm text-gray-500">
-                User ID: {userId}
+                Current User ID: {userId}
               </p> */}
             </div>
             <Button onClick={fetchUserMedia} variant="outline">
@@ -503,6 +525,56 @@ export default function MediaLibraryPage() {
               Refresh
             </Button>
           </div>
+
+          {/* User ID Input */}
+          {/* <Card>
+            <CardContent className="p-4">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900">View Different User's Media</h3>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="userId" className="text-sm font-medium text-gray-700">
+                      User ID
+                    </Label>
+                    <input
+                      id="userId"
+                      type="text"
+                      value={inputUserId}
+                      onChange={(e) => setInputUserId(e.target.value)}
+                      placeholder="Enter user ID to view their media"
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <Button 
+                    onClick={() => {
+                      if (inputUserId.trim()) {
+                        setUrlUserId(null) // Clear URL parameter
+                        fetchUserMedia()
+                      }
+                    }}
+                    disabled={!inputUserId.trim()}
+                    className="mt-6"
+                  >
+                    View Media
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      setInputUserId('')
+                      setUrlUserId(null)
+                      // This will trigger useEffect to use authenticated user ID
+                    }}
+                    variant="outline"
+                    className="mt-6"
+                  >
+                    Reset
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Enter a user ID to view their media library. Leave empty to view your own media.
+                </p>
+              </div>
+            </CardContent>
+          </Card> */}
 
           {error && (
             <Card className="border-red-200 bg-red-50">
@@ -570,7 +642,7 @@ export default function MediaLibraryPage() {
             {/* Session Selector */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
+                {/* <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     id="groupBySession"
@@ -581,7 +653,7 @@ export default function MediaLibraryPage() {
                   <label htmlFor="groupBySession" className="text-sm font-medium text-gray-700">
                     Group by Session
                   </label>
-                </div>
+                </div> */}
                 
                 {groupBySession && (
                   <select
@@ -898,5 +970,6 @@ export default function MediaLibraryPage() {
         </div>
       )}
     </div>
+    </ProtectedRoute>
   )
 } 
