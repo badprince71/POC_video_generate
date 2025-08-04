@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/utils/supabase'
+import { supabase, isSupabaseConfigured } from '@/utils/supabase'
 
 interface FrameData {
   id: number
@@ -29,13 +29,60 @@ interface SaveFramesRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if Supabase is configured
+    if (!isSupabaseConfigured()) {
+      console.error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.')
+      return NextResponse.json({ 
+        error: "Database not configured. Please set up Supabase environment variables.",
+        details: "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY"
+      }, { status: 500 })
+    }
+
     const { frames, userId, sessionId, originalPrompt, videoDuration, frameCount, style, mood }: SaveFramesRequest = await request.json()
+    
+    console.log('Received save_frames request:', {
+      framesCount: frames?.length,
+      userId,
+      sessionId,
+      originalPrompt: originalPrompt?.substring(0, 50) + '...',
+      videoDuration,
+      frameCount,
+      style,
+      mood
+    })
+    
+    // Log first frame for debugging
+    if (frames && frames.length > 0) {
+      console.log('First frame sample:', {
+        id: frames[0].id,
+        timestamp: frames[0].timestamp,
+        imageUrl: frames[0].imageUrl?.substring(0, 50) + '...',
+        description: frames[0].description?.substring(0, 50) + '...',
+        prompt: frames[0].prompt?.substring(0, 50) + '...'
+      })
+    }
     
     if (!frames || frames.length === 0) {
       return NextResponse.json({ error: "Frames data is required" }, { status: 400 })
     }
 
+    if (!userId || !sessionId) {
+      return NextResponse.json({ 
+        error: "userId and sessionId are required",
+        details: {
+          userId: userId || 'undefined',
+          sessionId: sessionId || 'undefined'
+        }
+      }, { status: 400 })
+    }
+
+    // Check if userId is 'anonymous' which might indicate authentication issues
+    if (userId === 'anonymous') {
+      console.warn('User is anonymous - authentication might be required')
+    }
+
     // Save session metadata to database
+    console.log('Attempting to save session to database...')
     const { data: sessionData, error: sessionError } = await supabase
       .from('video_sessions')
       .insert({
@@ -54,10 +101,18 @@ export async function POST(request: NextRequest) {
 
     if (sessionError) {
       console.error('Error saving session:', sessionError)
-      return NextResponse.json({ error: "Failed to save session" }, { status: 500 })
+      return NextResponse.json({ 
+        error: "Failed to save session", 
+        details: sessionError.message,
+        code: sessionError.code,
+        hint: sessionError.hint || 'No additional hint available'
+      }, { status: 500 })
     }
 
+    console.log('Session saved successfully:', sessionData)
+
     // Save individual frames to database
+    console.log('Preparing to save frames...')
     const framesToInsert = frames.map(frame => ({
       session_id: sessionId,
       frame_number: frame.id,
@@ -73,6 +128,7 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString()
     }))
 
+    console.log('Attempting to save frames to database...')
     const { data: framesData, error: framesError } = await supabase
       .from('video_frames')
       .insert(framesToInsert)
@@ -80,10 +136,15 @@ export async function POST(request: NextRequest) {
 
     if (framesError) {
       console.error('Error saving frames:', framesError)
-      return NextResponse.json({ error: "Failed to save frames" }, { status: 500 })
+      return NextResponse.json({ 
+        error: "Failed to save frames", 
+        details: framesError.message,
+        code: framesError.code,
+        hint: framesError.hint || 'No additional hint available'
+      }, { status: 500 })
     }
 
-    console.log(`Saved ${frames.length} frames to database for session ${sessionId}`)
+    console.log(`Successfully saved ${frames.length} frames to database for session ${sessionId}`)
 
     return NextResponse.json({
       sessionId: sessionId,
@@ -93,10 +154,11 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error saving frames to database:', error)
+    console.error('Unexpected error in save_frames API:', error)
     return NextResponse.json({ 
       error: "Internal server error", 
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     }, { status: 500 })
   }
 } 

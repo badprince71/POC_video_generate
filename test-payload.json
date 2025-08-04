@@ -1,0 +1,18 @@
+{
+  "frames": [
+    {
+      "id": 1,
+      "timestamp": "0:00",
+      "imageUrl": "https://example.com/test1.jpg",
+      "description": "Test frame 1",
+      "prompt": "Test prompt 1"
+    }
+  ],
+  "userId": "test_user_123",
+  "sessionId": "test_session_1754328237161",
+  "originalPrompt": "Test video generation",
+  "videoDuration": 10,
+  "frameCount": 1,
+  "style": "Realistic",
+  "mood": "Vibrant"
+} 
