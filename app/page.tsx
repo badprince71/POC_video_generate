@@ -148,7 +148,7 @@ export default function FrameGenerationPage() {
   }
 
   // Utility function to save frames to database
-  const saveFramesToDatabase = async (frames: VideoFrame[]) => {
+  const saveFramesToDatabase = async (frames: VideoFrame[], providedRequestId?: string) => {
     try {
       // Check if localStorage is available
       if (typeof window === 'undefined' || !window.localStorage) {
@@ -156,93 +156,43 @@ export default function FrameGenerationPage() {
       }
 
       console.log('Starting frame save process...')
-      showToast.info('Uploading frames to cloud storage...')
-
-      // First, upload all frames to S3 to avoid payload size issues
-      const framesNeedingUpload = frames.filter(frame => 
-        frame.imageUrl.startsWith('data:image/') || 
-        frame.imageUrl.includes('blob:') ||
-        frame.imageUrl.startsWith('http://localhost')
-      )
-
-      if (framesNeedingUpload.length > 0) {
-        console.log(`Uploading ${framesNeedingUpload.length} frames to S3...`)
-        
-        // Upload each frame to S3
-        const uploadPromises = framesNeedingUpload.map(async (frame, index) => {
-          const frameNumber = (index + 1).toString().padStart(2, '0')
-          const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
-          
-          // Convert image URL to base64 if it's not already
-          let imageData = frame.imageUrl
-          if (!imageData.startsWith('data:image/')) {
-            // Fetch the image and convert to base64
-            const response = await fetch(imageData)
-            const blob = await response.blob()
-            imageData = await new Promise<string>((resolve) => {
-              const reader = new FileReader()
-              reader.onload = () => resolve(reader.result as string)
-              reader.readAsDataURL(blob)
-            })
-          }
-
-          // Upload to S3
-          const uploadResponse = await fetch('/api/upload_image_s3', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              imageData: imageData,
-              frameId: frame.id,
-              isUserUpload: false // Generated frame goes to reference-frames
-            }),
-          })
-
-          const result = await uploadResponse.json()
-          
-          if (result.error) {
-            throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
-          }
-
-          console.log(`Frame ${frame.id} uploaded to S3:`, result.imageUrl)
-          return { frameId: frame.id, imageUrl: result.imageUrl }
-        })
-
-        // Wait for all uploads to complete
-        const results = await Promise.all(uploadPromises)
-        
-        // Update frame URLs with S3 URLs
-        const updatedFrames = frames.map((frame) => {
-          const uploadResult = results.find(r => r.frameId === frame.id)
-          if (uploadResult) {
-            return {
-              ...frame,
-              imageUrl: uploadResult.imageUrl
-            }
-          }
-          return frame // Keep existing frame if no upload result found
-        })
-
-        // Update the frames state with S3 URLs
-        setGeneratedFrames(ensureFrameUrls(updatedFrames))
-        
-        // Use the updated frames for database save
-        frames = updatedFrames
-      }
-
-      console.log('All frames uploaded to S3, now saving to database...')
       showToast.info('Saving frame data to database...')
 
-      // Generate session ID
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      // Frames should already be uploaded to S3 during generation
+      // Just verify that frames have S3 URLs
+      const framesWithBase64 = frames.filter(frame => 
+        frame.imageUrl.startsWith('data:image/')
+      )
 
-      // Prepare frames for database (without large image data)
+      if (framesWithBase64.length > 0) {
+        console.warn(`Found ${framesWithBase64.length} frames with base64 URLs. These should have been uploaded during generation.`)
+        showToast.warning('Some frames may not be properly uploaded to cloud storage.')
+      }
+
+      // Use provided request ID, extract from S3 URLs, or generate a new one
+      let requestId = providedRequestId || `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      
+      // If no provided request ID, try to extract from S3 URLs
+      if (!providedRequestId) {
+        const firstFrameWithS3Url = frames.find(frame => 
+          frame.imageUrl && frame.imageUrl.includes('amazonaws.com')
+        )
+        
+        if (firstFrameWithS3Url) {
+          const urlParts = firstFrameWithS3Url.imageUrl.split('/')
+          const requestIndex = urlParts.findIndex(part => part.startsWith('req_'))
+          if (requestIndex !== -1) {
+            requestId = urlParts[requestIndex]
+            console.log(`Using existing request ID from S3: ${requestId}`)
+          }
+        }
+      }
+
+      // Prepare frames for database (frames should already have S3 URLs)
       const framesForDatabase = frames.map((frame) => ({
         id: frame.id,
         timestamp: frame.timestamp,
-        imageUrl: frame.imageUrl, // Now this is an S3 URL, not base64
+        imageUrl: frame.imageUrl, // Should already be S3 URL from generation
         description: frame.description,
         prompt: frame.prompt,
         sceneStory: frame.sceneStory,
@@ -259,7 +209,7 @@ export default function FrameGenerationPage() {
         body: JSON.stringify({
           frames: framesForDatabase,
           userId: userId,
-          sessionId: sessionId,
+          sessionId: requestId, // Use requestId as sessionId for database
           originalPrompt: prompt,
           videoDuration: videoDuration,
           frameCount: frameCount,
@@ -291,10 +241,11 @@ export default function FrameGenerationPage() {
       // Save session info to localStorage for video generation page
       try {
         localStorage.setItem('currentSession', JSON.stringify({
-          sessionId: sessionId,
+          sessionId: requestId, // Use requestId as sessionId for video-generation page
           userId: userId,
           frameCount: frameCount
         }))
+        console.log(`Session saved to localStorage: ${requestId}`)
       } catch (storageError) {
         console.warn('Could not save session to localStorage:', storageError)
         // Continue anyway, as database save succeeded
@@ -302,7 +253,7 @@ export default function FrameGenerationPage() {
 
       console.log('Frames saved to database successfully')
       showToast.success('Frames saved successfully!')
-      return { sessionId, userId }
+      return { sessionId: requestId, userId }
     } catch (error) {
       console.error('Error saving frames to database:', error)
       
@@ -445,6 +396,10 @@ export default function FrameGenerationPage() {
     setGeneratedFrames([]) // Clear previous frames
     setFrameProgress({}) // Reset frame progress tracking
 
+    // Generate a consistent request ID for this generation (matching video-generation page)
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    console.log(`Starting frame generation with request ID: ${requestId}`)
+
     const inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "");
 
     try {
@@ -519,6 +474,46 @@ export default function FrameGenerationPage() {
         console.log(`Frame ${i + 1} generated successfully`)
         console.log(`Image data length: ${response.imageUrl?.length || 0} characters`)
 
+        // IMMEDIATELY upload frame to S3 after generation
+        let s3Frame = frame
+        if (response.imageUrl && response.imageUrl.startsWith('data:image/')) {
+          try {
+            console.log(`Uploading frame ${i + 1} to S3 immediately...`)
+            
+            // Upload to S3 using the consistent session ID
+            const uploadResponse = await fetch('/api/upload_image_s3', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+                              body: JSON.stringify({
+                  imageData: response.imageUrl,
+                  frameId: frame.id,
+                  isUserUpload: false,
+                  folderPath: `${userId}/${requestId}/reference-frames`
+                }),
+            })
+
+            const uploadResult = await uploadResponse.json()
+            
+            if (uploadResult.error) {
+              console.error(`Failed to upload frame ${i + 1} to S3:`, uploadResult.error)
+              // Continue with base64 URL if upload fails
+            } else {
+              console.log(`Frame ${i + 1} uploaded to S3 successfully:`, uploadResult.imageUrl)
+              // Update frame with S3 URL
+              s3Frame = {
+                ...frame,
+                imageUrl: uploadResult.imageUrl
+              }
+            }
+          } catch (uploadError) {
+            console.error(`Error uploading frame ${i + 1} to S3:`, uploadError)
+            // Continue with base64 URL if upload fails
+          }
+        }
+
         // Update progress for this frame
         setFrameProgress(prev => {
           const newProgress = { ...prev, [i]: true }
@@ -528,7 +523,7 @@ export default function FrameGenerationPage() {
           return newProgress
         })
 
-        return { frame, index: i }
+        return { frame: s3Frame, index: i }
       })
 
       // Generate all frames concurrently
@@ -551,10 +546,10 @@ export default function FrameGenerationPage() {
       setGeneratedFrames(ensureFrameUrls(newFrames))
       setFrameGenerationProgress(100)
       
-      // Save frames to database using utility function
+      // Save frames to database using utility function with the same request ID
       try {
-        const { sessionId, userId } = await saveFramesToDatabase(newFrames)
-        console.log(`Frames saved to database successfully. Session: ${sessionId}`)
+        const { sessionId: dbSessionId, userId } = await saveFramesToDatabase(newFrames, requestId)
+        console.log(`Frames saved to database successfully. Session: ${dbSessionId}`)
       } catch (error) {
         console.error('Failed to save frames to database:', error)
         showToast.error('Failed to save frames to database. Video generation may not work properly.')

@@ -213,6 +213,7 @@ export default function VideoGenerationPage() {
         let sessionData
         try {
           sessionData = JSON.parse(currentSession)
+          console.log('Session data from localStorage:', sessionData)
         } catch (parseError) {
           console.error('Invalid session data in localStorage:', parseError)
           localStorage.removeItem('currentSession') // Clear corrupted data
@@ -220,6 +221,7 @@ export default function VideoGenerationPage() {
         }
 
         const { sessionId, userId } = sessionData
+        console.log(`Extracted sessionId: ${sessionId}, userId: ${userId}`)
 
         if (!sessionId || !userId) {
           console.error('Incomplete session data:', sessionData)
@@ -228,6 +230,7 @@ export default function VideoGenerationPage() {
         }
         
         // Fetch frames from database with better error handling  
+        console.log(`Fetching frames for sessionId: ${sessionId}, userId: ${userId}`)
         const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`)
         
         if (!response.ok) {
@@ -246,34 +249,175 @@ export default function VideoGenerationPage() {
         }
 
         if (result.frames && result.frames.length > 0) {
-          // Check if frames have valid image URLs
-          const framesWithValidUrls = result.frames.filter((frame: VideoFrame) => 
-            frame.imageUrl && 
-            (frame.imageUrl.startsWith('data:image/') || 
-             frame.imageUrl.includes('amazonaws.com') || 
-             frame.imageUrl.includes('s3.'))
-          )
+          console.log(`Found ${result.frames.length} frames in database`)
           
-          if (framesWithValidUrls.length === 0) {
-            console.warn('Frames found but no valid image URLs. Attempting to recover from S3...')
-            await attemptFrameRecovery(sessionId, userId)
-            return
+          // Debug: Log the first frame's imageUrl to see what we're getting
+          if (result.frames.length > 0) {
+            console.log('First frame imageUrl:', result.frames[0].imageUrl)
+            console.log('First frame imageUrl type:', typeof result.frames[0].imageUrl)
+            console.log('First frame imageUrl length:', result.frames[0].imageUrl?.length)
           }
           
-          setGeneratedFrames(ensureFrameUrls(framesWithValidUrls))
-          setCurrentStep("input")
-          console.log(`Loaded ${framesWithValidUrls.length} frames from database for session ${sessionId}`)
+          // Check if frames have valid image URLs (S3 URLs, proxy URLs, or base64)
+          const framesWithValidUrls = result.frames.filter((frame: VideoFrame) => {
+            const hasValidUrl = frame.imageUrl && 
+              (frame.imageUrl.startsWith('data:image/') || 
+               frame.imageUrl.includes('amazonaws.com') || 
+               frame.imageUrl.includes('s3.') ||
+               frame.imageUrl.includes('http') ||
+               frame.imageUrl.startsWith('/api/proxy_s3_image'))
+            
+            if (!hasValidUrl) {
+              console.warn(`Frame ${frame.id} has invalid URL:`, frame.imageUrl)
+            }
+            
+            return hasValidUrl
+          })
           
-          // Auto-save frames when loaded (in case they need to be saved with new structure)
-          await autoSaveFrames(framesWithValidUrls)
+          console.log(`Frames with valid URLs: ${framesWithValidUrls.length}/${result.frames.length}`)
+          
+                  if (framesWithValidUrls.length === 0) {
+          console.warn('Frames found but no valid image URLs. Attempting to recover from S3...')
+          
+          // First, try to find any recent sessions for this user
+          try {
+            console.log('Attempting to find recent sessions for user:', userId)
+            const recentSessionsResponse = await fetch(`/api/get_recent_sessions?userId=${userId}`)
+            if (recentSessionsResponse.ok) {
+              const recentSessions = await recentSessionsResponse.json()
+              console.log('Recent sessions found:', recentSessions)
+              
+              if (recentSessions.sessions && recentSessions.sessions.length > 0) {
+                // Try the most recent session
+                const mostRecentSession = recentSessions.sessions[0]
+                console.log('Trying most recent session:', mostRecentSession.session_id)
+                
+                const recentFramesResponse = await fetch(`/api/get_frames?sessionId=${mostRecentSession.session_id}&userId=user`)
+                if (recentFramesResponse.ok) {
+                  const recentFramesResult = await recentFramesResponse.json()
+                  if (recentFramesResult.frames && recentFramesResult.frames.length > 0) {
+                    console.log(`Found ${recentFramesResult.frames.length} frames in recent session`)
+                    
+                                       // Check if these frames have valid URLs
+                   const recentFramesWithValidUrls = recentFramesResult.frames.filter((frame: VideoFrame) => {
+                     const hasValidUrl = frame.imageUrl && 
+                       (frame.imageUrl.startsWith('data:image/') || 
+                        frame.imageUrl.includes('amazonaws.com') || 
+                        frame.imageUrl.includes('s3.') ||
+                        frame.imageUrl.includes('http') ||
+                        frame.imageUrl.startsWith('/api/proxy_s3_image'))
+                     
+                     if (!hasValidUrl) {
+                       console.warn(`Recent frame ${frame.id} has invalid URL:`, frame.imageUrl)
+                     }
+                     
+                     return hasValidUrl
+                   })
+                    
+                    if (recentFramesWithValidUrls.length > 0) {
+                      console.log(`Found ${recentFramesWithValidUrls.length} frames with valid URLs in recent session`)
+                      setGeneratedFrames(ensureFrameUrls(recentFramesWithValidUrls))
+                      setCurrentStep("input")
+                      showToast.success(`Loaded ${recentFramesWithValidUrls.length} frames from recent session`)
+                      return
+                    }
+                  }
+                }
+              }
+            }
+          } catch (recentError) {
+            console.error('Error finding recent sessions:', recentError)
+          }
+          
+          // If no recent sessions work, try S3 recovery
+          await attemptFrameRecovery(sessionId, userId)
+          return
+        }
+          
+          // Check if frames have base64 URLs that need to be uploaded to S3
+          const framesNeedingS3Upload = framesWithValidUrls.filter((frame: VideoFrame) => 
+            frame.imageUrl.startsWith('data:image/')
+          )
+          
+          if (framesNeedingS3Upload.length > 0) {
+            console.log(`Found ${framesNeedingS3Upload.length} frames with base64 URLs. Uploading to S3...`)
+            showToast.info('Uploading frames to cloud storage...')
+            
+            try {
+              // Upload frames to S3
+              const uploadPromises = framesNeedingS3Upload.map(async (frame: VideoFrame, index: number) => {
+                const frameNumber = (index + 1).toString().padStart(2, '0')
+                
+                // Upload to S3
+                const uploadResponse = await fetch('/api/upload_image_s3', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    imageData: frame.imageUrl,
+                    frameId: frame.id,
+                    isUserUpload: false,
+                    folderPath: `${userId}/${sessionId}/reference-frames`
+                  }),
+                })
+
+                const result = await uploadResponse.json()
+                
+                if (result.error) {
+                  throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
+                }
+
+                console.log(`Frame ${frame.id} uploaded to S3:`, result.imageUrl)
+                return { frameId: frame.id, imageUrl: result.imageUrl }
+              })
+
+              // Wait for all uploads to complete
+              const results = await Promise.all(uploadPromises)
+              
+              // Update frames with S3 URLs
+              const updatedFrames = framesWithValidUrls.map((frame: VideoFrame) => {
+                const uploadResult = results.find(r => r.frameId === frame.id)
+                if (uploadResult) {
+                  return {
+                    ...frame,
+                    imageUrl: uploadResult.imageUrl
+                  }
+                }
+                return frame
+              })
+              
+              setGeneratedFrames(ensureFrameUrls(updatedFrames))
+              setCurrentStep("input")
+              console.log(`Successfully uploaded ${results.length} frames to S3 and loaded them`)
+              showToast.success(`Successfully loaded ${updatedFrames.length} frames`)
+              
+            } catch (uploadError) {
+              console.error('Error uploading frames to S3:', uploadError)
+              showToast.error('Failed to upload frames to S3. Attempting recovery...')
+              await attemptFrameRecovery(sessionId, userId)
+              return
+            }
+          } else {
+            // All frames already have S3 URLs
+            // All frames have valid URLs - load them
+            console.log('Loading frames with valid URLs:', framesWithValidUrls.map((f: VideoFrame) => ({ id: f.id, url: f.imageUrl })))
+            setGeneratedFrames(ensureFrameUrls(framesWithValidUrls))
+            setCurrentStep("input")
+            console.log(`Loaded ${framesWithValidUrls.length} frames from database for session ${sessionId}`)
+            showToast.success(`Successfully loaded ${framesWithValidUrls.length} frames`)
+          }
         } else {
           console.log('No frames found in database for this session')
+          showToast.info('No frames found. Please generate frames first.')
         }
       } catch (error) {
         console.error('Error loading frames from database:', error)
         // Handle network errors or other issues
         if (error instanceof TypeError && error.message.includes('fetch')) {
           console.error('Network error: Unable to connect to database API')
+          showToast.error('Network error: Unable to connect to database')
         }
       }
     }
@@ -288,7 +432,67 @@ export default function VideoGenerationPage() {
       console.log('Attempting to recover frames from S3...')
       showToast.info('Attempting to recover frames from S3...')
       
-      // Try to list frames from S3 for this user
+      // First, try to get frames from database again (in case they were saved with base64)
+      const dbResponse = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`)
+      if (dbResponse.ok) {
+        const dbResult = await dbResponse.json()
+        if (dbResult.frames && dbResult.frames.length > 0) {
+          console.log(`Found ${dbResult.frames.length} frames in database, attempting to upload to S3...`)
+          
+          // Filter frames that have base64 URLs
+          const framesWithBase64 = dbResult.frames.filter((frame: VideoFrame) => 
+            frame.imageUrl && frame.imageUrl.startsWith('data:image/')
+          )
+          
+          if (framesWithBase64.length > 0) {
+            console.log(`Found ${framesWithBase64.length} frames with base64 URLs. Uploading to S3...`)
+            
+            // Upload frames to S3
+            const uploadPromises = framesWithBase64.map(async (frame: VideoFrame, index: number) => {
+              const uploadResponse = await fetch('/api/upload_image_s3', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                  imageData: frame.imageUrl,
+                  frameId: frame.id,
+                  isUserUpload: false,
+                  folderPath: `${userId}/${sessionId}/reference-frames`
+                }),
+              })
+
+              const result = await uploadResponse.json()
+              
+              if (result.error) {
+                throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
+              }
+
+              return { frameId: frame.id, imageUrl: result.imageUrl }
+            })
+
+            const results = await Promise.all(uploadPromises)
+            
+            // Update frames with S3 URLs
+            const updatedFrames = dbResult.frames.map((frame: VideoFrame) => {
+              const uploadResult = results.find(r => r.frameId === frame.id)
+              if (uploadResult) {
+                return { ...frame, imageUrl: uploadResult.imageUrl }
+              }
+              return frame
+            })
+            
+            setGeneratedFrames(ensureFrameUrls(updatedFrames))
+            setCurrentStep("input")
+            console.log(`Successfully recovered and uploaded ${results.length} frames to S3`)
+            showToast.success(`Successfully recovered ${updatedFrames.length} frames`)
+            return
+          }
+        }
+      }
+      
+      // If no frames in database or no base64 URLs, try to list frames from S3
       const response = await fetch(`/api/list_s3_frames?userId=${userId}`)
       if (!response.ok) {
         throw new Error('Failed to list S3 frames')
