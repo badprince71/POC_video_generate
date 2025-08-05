@@ -38,7 +38,19 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    const { frames, userId, sessionId, originalPrompt, videoDuration, frameCount, style, mood }: SaveFramesRequest = await request.json()
+    // Get request body
+    let requestBody: SaveFramesRequest
+    try {
+      requestBody = await request.json()
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError)
+      return NextResponse.json({ 
+        error: "Invalid request body",
+        details: "Failed to parse JSON request body"
+      }, { status: 400 })
+    }
+
+    const { frames, userId, sessionId, originalPrompt, videoDuration, frameCount, style, mood } = requestBody
     
     console.log('Received save_frames request:', {
       framesCount: frames?.length,
@@ -50,6 +62,21 @@ export async function POST(request: NextRequest) {
       style,
       mood
     })
+    
+    // Validate payload size
+    const payloadSize = JSON.stringify(requestBody).length
+    const maxPayloadSize = 6 * 1024 * 1024 // 6MB limit
+    console.log(`Payload size: ${(payloadSize / 1024 / 1024).toFixed(2)}MB`)
+    
+    if (payloadSize > maxPayloadSize) {
+      console.error(`Payload too large: ${(payloadSize / 1024 / 1024).toFixed(2)}MB exceeds ${(maxPayloadSize / 1024 / 1024).toFixed(2)}MB limit`)
+      return NextResponse.json({ 
+        error: "Payload too large",
+        details: `Request payload size (${(payloadSize / 1024 / 1024).toFixed(2)}MB) exceeds the maximum allowed size (${(maxPayloadSize / 1024 / 1024).toFixed(2)}MB). Please ensure images are uploaded to cloud storage before saving frames.`,
+        payloadSize: payloadSize,
+        maxPayloadSize: maxPayloadSize
+      }, { status: 413 })
+    }
     
     // Log first frame for debugging
     if (frames && frames.length > 0) {

@@ -25,16 +25,16 @@ export default function UserMenu() {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="text-sm text-gray-600 hidden md:block">
-        <span className="font-medium">{user.email}</span>
+    <div className="flex items-center gap-4">
+      <div className="text-sm text-muted-foreground hidden md:block">
+        <span className="font-medium text-white">{user.email}</span>
       </div>
       <Button
         variant="ghost"
         size="sm"
         onClick={handleSignOut}
         disabled={isSigningOut}
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 text-muted-foreground hover:text-white hover:bg-secondary/50 transition-all duration-300"
       >
         <LogOut className="h-4 w-4" />
         <span className="hidden sm:inline">

@@ -1076,28 +1076,28 @@ Mood: ${fullStory.mood}`:
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen gradient-bg">
       {/* Navigation Header */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3">
+      <nav className="glass border-b border-border/20 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              <Button variant="outline" onClick={goBack}>
+            <div className="flex items-center gap-8">
+              <Button variant="outline" onClick={goBack} className="border-border/30 text-muted-foreground hover:bg-secondary">
                   Go to Back
                </Button>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 AI Video Generator
               </h1>
-              <div className="flex items-center gap-4">
-                <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+              <div className="flex items-center gap-2">
+                <Link href="/" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary rounded-lg transition-all duration-300">
                   <Home className="h-4 w-4" />
                   Frame Generation
                 </Link>
-                <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
+                <Link href="/video-generation" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary/10 rounded-lg border border-primary/20">
                   <Video className="h-4 w-4" />
                   Video Generation
                 </Link>
-                <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                <Link href="/media-library" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary rounded-lg transition-all duration-300">
                   <FileImage className="h-4 w-4" />
                   Media Library
                 </Link>
@@ -1107,14 +1107,14 @@ Mood: ${fullStory.mood}`:
         </div>
       </nav>
       
-      <div className="p-4">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto space-y-8 animate-fade-in-up">
           {/* Page Header */}
-          <div className="text-center space-y-4">
-            <h2 className="text-3xl font-bold text-gray-900">
+          <div className="text-center space-y-6">
+            <h2 className="text-4xl font-bold text-white">
               Video Generation
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
               Transform your generated frames into a smooth, animated video
             </p>
           </div>
@@ -1124,16 +1124,16 @@ Mood: ${fullStory.mood}`:
             <div className="space-y-6">
               {generatedFrames.length === 0 ? (
                 <div className="text-center space-y-6">
-                  <div className="bg-white rounded-lg p-8 shadow-sm border">
-                    <Video className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  <div className="gradient-card p-8 border border-border">
+                    <Video className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-xl font-semibold text-white mb-2">
                       No Frames Available
                     </h3>
-                    <p className="text-gray-600 mb-6">
+                    <p className="text-muted-foreground mb-6">
                       You need to generate frames first before creating a video.
                     </p>
                     <Link href="/">
-                      <Button>
+                      <Button className="btn-modern">
                         <ArrowLeft className="h-4 w-4 mr-2" />
                         Go to Frame Generation
                       </Button>
@@ -1143,19 +1143,21 @@ Mood: ${fullStory.mood}`:
               ) : (
                 <div className="space-y-6">
                   {/* Frame Preview Section */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Grid3X3 className="h-5 w-5" />
+                  <Card className="gradient-card card-hover">
+                    <CardHeader className="pb-6">
+                      <CardTitle className="flex items-center gap-3 text-xl">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <Grid3X3 className="h-6 w-6 text-primary" />
+                        </div>
                         Frame Preview
                       </CardTitle>
-                      <CardDescription>
+                      <CardDescription className="text-muted-foreground text-base">
                         Preview your {generatedFrames.length} frames before generating video clips
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       {/* Large Frame Display */}
-                      <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px] relative">
+                      <div className="bg-secondary/30 rounded-xl overflow-hidden flex items-center justify-center min-h-[400px] relative border border-border">
                         {generatedFrames[selectedFrameIndex]?.imageUrl ? (
                           <img
                             src={generatedFrames[selectedFrameIndex].imageUrl}

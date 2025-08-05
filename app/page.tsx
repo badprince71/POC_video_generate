@@ -155,15 +155,99 @@ export default function FrameGenerationPage() {
         throw new Error('localStorage not available in this environment')
       }
 
-      // Save frames with original URLs (no automatic cloud upload)
-      const framesWithOriginalUrls = frames.map((frame) => ({
-        ...frame,
-        userId: userId // Using authenticated user ID
-      }))
+      console.log('Starting frame save process...')
+      showToast.info('Uploading frames to cloud storage...')
+
+      // First, upload all frames to S3 to avoid payload size issues
+      const framesNeedingUpload = frames.filter(frame => 
+        frame.imageUrl.startsWith('data:image/') || 
+        frame.imageUrl.includes('blob:') ||
+        frame.imageUrl.startsWith('http://localhost')
+      )
+
+      if (framesNeedingUpload.length > 0) {
+        console.log(`Uploading ${framesNeedingUpload.length} frames to S3...`)
+        
+        // Upload each frame to S3
+        const uploadPromises = framesNeedingUpload.map(async (frame, index) => {
+          const frameNumber = (index + 1).toString().padStart(2, '0')
+          const fileName = `frame_${frameNumber}_${frame.timestamp}_${Date.now()}.png`
+          
+          // Convert image URL to base64 if it's not already
+          let imageData = frame.imageUrl
+          if (!imageData.startsWith('data:image/')) {
+            // Fetch the image and convert to base64
+            const response = await fetch(imageData)
+            const blob = await response.blob()
+            imageData = await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.onload = () => resolve(reader.result as string)
+              reader.readAsDataURL(blob)
+            })
+          }
+
+          // Upload to S3
+          const uploadResponse = await fetch('/api/upload_image_s3', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+              imageData: imageData,
+              frameId: frame.id,
+              isUserUpload: false // Generated frame goes to reference-frames
+            }),
+          })
+
+          const result = await uploadResponse.json()
+          
+          if (result.error) {
+            throw new Error(`Failed to upload frame ${frame.id}: ${result.error}`)
+          }
+
+          console.log(`Frame ${frame.id} uploaded to S3:`, result.imageUrl)
+          return { frameId: frame.id, imageUrl: result.imageUrl }
+        })
+
+        // Wait for all uploads to complete
+        const results = await Promise.all(uploadPromises)
+        
+        // Update frame URLs with S3 URLs
+        const updatedFrames = frames.map((frame) => {
+          const uploadResult = results.find(r => r.frameId === frame.id)
+          if (uploadResult) {
+            return {
+              ...frame,
+              imageUrl: uploadResult.imageUrl
+            }
+          }
+          return frame // Keep existing frame if no upload result found
+        })
+
+        // Update the frames state with S3 URLs
+        setGeneratedFrames(ensureFrameUrls(updatedFrames))
+        
+        // Use the updated frames for database save
+        frames = updatedFrames
+      }
+
+      console.log('All frames uploaded to S3, now saving to database...')
+      showToast.info('Saving frame data to database...')
 
       // Generate session ID
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      // userId is already defined from useAuth()
+
+      // Prepare frames for database (without large image data)
+      const framesForDatabase = frames.map((frame) => ({
+        id: frame.id,
+        timestamp: frame.timestamp,
+        imageUrl: frame.imageUrl, // Now this is an S3 URL, not base64
+        description: frame.description,
+        prompt: frame.prompt,
+        sceneStory: frame.sceneStory,
+        fullStory: frame.fullStory
+      }))
 
       // Save frames to database
       const response = await fetch('/api/save_frames', {
@@ -173,7 +257,7 @@ export default function FrameGenerationPage() {
         },
         credentials: 'include',
         body: JSON.stringify({
-          frames: framesWithOriginalUrls,
+          frames: framesForDatabase,
           userId: userId,
           sessionId: sessionId,
           originalPrompt: prompt,
@@ -228,6 +312,8 @@ export default function FrameGenerationPage() {
           showToast.error('Network error: Unable to connect to server. Please check your internet connection.')
         } else if (error.message.includes('Supabase not configured')) {
           showToast.error('Database not configured. Please set up environment variables.')
+        } else if (error.message.includes('HTTP 413')) {
+          showToast.error('Payload too large. Please try with fewer frames or contact support.')
         } else {
           showToast.error(`Error saving frames: ${error.message}`)
         }
@@ -677,22 +763,23 @@ export default function FrameGenerationPage() {
     if (frames.length === 0) return null
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {/* Frame Navigation */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">{frames.length} frames generated</Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="secondary" className="bg-primary/20 text-primary border-primary/30">{frames.length} frames generated</Badge>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setSelectedFrameIndex(Math.max(0, selectedFrameIndex - 1))}
               disabled={selectedFrameIndex === 0}
+              className="border-border/30 text-muted-foreground hover:bg-secondary"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-white bg-secondary/50 px-3 py-1 rounded-lg">
               Frame {selectedFrameIndex + 1} of {frames.length}
             </span>
             <Button
@@ -700,13 +787,14 @@ export default function FrameGenerationPage() {
               size="sm"
               onClick={() => setSelectedFrameIndex(Math.min(frames.length - 1, selectedFrameIndex + 1))}
               disabled={selectedFrameIndex === frames.length - 1}
+              className="border-border/30 text-muted-foreground hover:bg-secondary"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
         {/* Selected Frame Display */}
-        <div className="bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px]">
+        <div className="bg-secondary/30 rounded-xl overflow-hidden flex items-center justify-center min-h-[400px] border border-border">
           <Image
             src={frames[selectedFrameIndex]?.imageUrl || "/placeholder.svg"}
             alt={`Frame ${selectedFrameIndex + 1}`}
@@ -721,26 +809,26 @@ export default function FrameGenerationPage() {
         </div>
 
         {/* Frame Info */}
-        <div className="bg-gray-50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <Badge variant="outline">{frames[selectedFrameIndex]?.timestamp}</Badge>
-            <span className="text-sm text-gray-600">Frame {selectedFrameIndex + 1}</span>
+        <div className="bg-secondary/50 rounded-xl p-4 border border-border">
+          <div className="flex items-center justify-between mb-3">
+            <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">{frames[selectedFrameIndex]?.timestamp}</Badge>
+            <span className="text-sm text-muted-foreground">Frame {selectedFrameIndex + 1}</span>
           </div>
-          <p className="text-sm text-gray-700">{frames[selectedFrameIndex]?.description}</p>
+          <p className="text-sm text-white leading-relaxed">{frames[selectedFrameIndex]?.description}</p>
         </div>
 
         {/* Frame Thumbnails */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium">All Generated Frames</h4>
-          <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+        <div className="space-y-3">
+          <h4 className="text-base font-medium text-white">All Generated Frames</h4>
+          <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
             {frames.map((frame, index) => (
               <button
                 key={frame.id}
                 onClick={() => setSelectedFrameIndex(index)}
-                className={`aspect-square rounded border-2 overflow-hidden transition-all relative bg-gray-100 flex items-center justify-center ${
+                className={`aspect-square rounded-lg border-2 overflow-hidden transition-all duration-300 relative bg-secondary flex items-center justify-center ${
                   selectedFrameIndex === index
-                    ? "border-blue-500 ring-2 ring-blue-200"
-                    : "border-gray-200 hover:border-gray-300"
+                    ? "border-primary ring-2 ring-primary/30"
+                    : "border-border hover:border-primary/50"
                 }`}
               >
                 <Image
@@ -750,7 +838,7 @@ export default function FrameGenerationPage() {
                   height={100}
                   className="max-w-full max-h-full object-contain"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
+                <div className="absolute inset-x-0 bottom-0 bg-black/70 text-white text-xs p-2 text-center backdrop-blur-sm">
                   {frame.timestamp}
                 </div>
               </button>
@@ -761,28 +849,28 @@ export default function FrameGenerationPage() {
     )
   }
 
-  return (
+    return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen gradient-bg">
         {/* Navigation Header */}
-        <nav className="bg-white shadow-sm border-b">
-          <div className="max-w-6xl mx-auto px-4 py-3">
+        <nav className="glass border-b border-border/20 sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              <div className="flex items-center gap-8">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                   AI Video Generator
                 </h1>
-                <div className="flex items-center gap-4">
-                  <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Link href="/" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary/10 hover:bg-primary/20 rounded-lg transition-all duration-300 border border-primary/20">
                     <Home className="h-4 w-4" />
                     Frame Generation
                   </Link>
-                  <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Link href="/video-generation" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary rounded-lg transition-all duration-300">
                     <Video className="h-4 w-4" />
                     Video Generation
                   </Link>
                   
-                  <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Link href="/media-library" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary rounded-lg transition-all duration-300">
                     <FileImage className="h-4 w-4" />
                     Media Library
                   </Link>
@@ -793,32 +881,34 @@ export default function FrameGenerationPage() {
           </div>
         </nav>
 
-      <div className="p-4">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto space-y-8 animate-fade-in-up">
           {/* Page Header */}
-          <div className="text-center space-y-4">
-            <h2 className="text-3xl font-bold text-gray-900">
+          <div className="text-center space-y-6">
+            <h2 className="text-4xl font-bold text-white">
               Frame Generation
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
               Generate frames from your prompt and image to create the foundation for your video
             </p>
           </div>
 
           {/* Main Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <Card className="gradient-card card-hover">
+              <CardHeader className="pb-6">
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Upload className="h-6 w-6 text-primary" />
+                  </div>
                   Input Configuration
                 </CardTitle>
-                <CardDescription>Upload your photo and describe the video you want to create</CardDescription>
+                <CardDescription className="text-muted-foreground text-base">Upload your photo and describe the video you want to create</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="image-upload">Upload Your Photo</Label>
-                  <div className="mt-1">
+                  <Label htmlFor="image-upload" className="text-white font-medium mb-3 block">Upload Your Photo</Label>
+                  <div className="mt-2">
                     <div className="relative">
                       <input
                         id="image-upload"
@@ -828,28 +918,29 @@ export default function FrameGenerationPage() {
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         disabled={currentStep === "generating-frames"}
                       />
-                      <div className="flex items-center justify-center w-full h-12 px-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 hover:border-gray-400 transition-colors duration-200 cursor-pointer">
-                        <Upload className="h-5 w-5 mr-2 text-gray-500" />
-                        <span className="text-sm font-medium text-gray-700">
+                      <div onClick={() => document.getElementById('image-upload')?.click()} className="flex items-center justify-center w-full h-16 px-6 border-2 border-dashed border-primary/30 rounded-xl bg-secondary/50 hover:bg-secondary hover:border-primary/50 transition-all duration-300 cursor-pointer backdrop-blur-sm">
+                        <Upload className="h-6 w-6 mr-3 text-primary" />
+                        <span className="text-base font-medium text-white">
                           {selectedImage ? selectedImage.name : "Choose a photo or drag and drop"}
                         </span>
                       </div>
+                      
                     </div>
                     {imagePreview && (
-                      <div className="mt-3">
+                      <div className="mt-4">
                         <Image
                           src={imagePreview || "/placeholder.svg"}
                           alt="Preview"
                           width={128}
                           height={128}
-                          className="w-32 h-32 object-cover rounded-lg border shadow-sm"
+                          className="w-32 h-32 object-cover rounded-xl border-2 border-primary/20 shadow-lg"
                         />
                       </div>
                     )}
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="prompt">Video Description</Label>
+                  <Label htmlFor="prompt" className="text-white font-medium mb-3 block">Video Description</Label>
                   <Textarea
                     id="prompt"
                     placeholder="Describe your video... e.g., 'Create a birthday invitation video where I'm celebrating with confetti and balloons in a party setting'"
@@ -858,16 +949,16 @@ export default function FrameGenerationPage() {
                       setPrompt(e.target.value)
                       setGeneratedStory(null) // Clear story when prompt changes
                     }}
-                    className="mt-1 min-h-[100px]"
+                    className="mt-2 min-h-[120px] input-modern resize-none"
                     disabled={currentStep === "generating-frames"}
                   />
                   
                   {/* Video Duration and Style/Mood Selection */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
                     
                     <div>
-                      <Label htmlFor="style-select" className="flex items-center gap-2">
-                        <Palette className="h-4 w-4" />
+                      <Label htmlFor="style-select" className="flex items-center gap-2 text-white font-medium mb-3 block" style={{display: "flex"}}>
+                        <Palette className="h-4 w-4 text-primary" />
                         Style
                       </Label>
                       <input
@@ -878,20 +969,14 @@ export default function FrameGenerationPage() {
                           setSelectedStyle(e.target.value)
                           setGeneratedStory(null) // Clear story when style changes
                         }}
-                        className="mt-1 w-full px-3 py-2 border rounded-md focus:outline-none border-gray-300 focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="input-modern w-full"
                         disabled={currentStep === "generating-frames"}
-                      >
-                        {/* {styleOptions.map((style) => (
-                          <option key={style} value={style}>
-                            {style}
-                          </option>
-                        ))} */}
-                      </input>
+                      />
                     </div>
                     
                     <div>
-                      <Label htmlFor="mood-select" className="flex items-center gap-2">
-                        <Heart className="h-4 w-4" />
+                      <Label htmlFor="mood-select" className="flex items-center gap-2 text-white font-medium mb-3 block" style={{display: "flex"}}>
+                        <Heart className="h-4 w-4 text-primary" />
                         Mood
                       </Label>
                       <input
@@ -902,20 +987,14 @@ export default function FrameGenerationPage() {
                           setSelectedMood(e.target.value)
                           setGeneratedStory(null) // Clear story when mood changes
                         }}
-                        className="mt-1 w-full px-3 py-2 border rounded-md focus:outline-none border-gray-300 focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="input-modern w-full"
                         disabled={currentStep === "generating-frames"}
-                      >
-                        {/* {moodOptions.map((mood) => (
-                          <option key={mood} value={mood}>
-                            {mood}
-                          </option>
-                        ))} */}
-                      </input>
+                      />
                     </div>
 
                     <div>
-                      <Label htmlFor="duration-select" className="flex items-center gap-2">
-                        <Video className="h-4 w-4" />
+                      <Label htmlFor="duration-select" className="flex items-center gap-2 text-white font-medium mb-3 block" style={{display: "flex"}}>
+                        <Video className="h-4 w-4 text-primary" />
                         Video Duration
                       </Label>
                       <select
@@ -926,7 +1005,7 @@ export default function FrameGenerationPage() {
                           handleVideoDurationChange(duration)
                           setGeneratedStory(null) // Clear story when duration changes
                         }}
-                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        className="input-modern w-full"
                         disabled={currentStep === "generating-frames"}
                       >
                         {durationOptions.map((duration) => (
@@ -935,7 +1014,7 @@ export default function FrameGenerationPage() {
                           </option>
                         ))}
                       </select>
-                      <div className="mt-1 text-xs text-gray-500">
+                      <div className="mt-2 text-sm text-muted-foreground">
                         {frameCount} frames ({videoDuration / frameCount}s per frame)
                       </div>
                     </div>
@@ -943,11 +1022,11 @@ export default function FrameGenerationPage() {
                   
                   {/* Enhanced Prompt Preview */}
                   {prompt && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="outline" className="text-xs">Enhanced Prompt Preview</Badge>
+                    <div className="mt-6 p-4 bg-primary/10 rounded-xl border border-primary/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Badge variant="outline" className="text-xs bg-primary/20 text-primary border-primary/30">Enhanced Prompt Preview</Badge>
                       </div>
-                      <p className="text-sm text-blue-800">
+                      <p className="text-sm text-white leading-relaxed">
                         {createEnhancedPrompt(prompt, selectedStyle, selectedMood)}
                       </p>
                     </div>
@@ -955,15 +1034,15 @@ export default function FrameGenerationPage() {
                   
                   {/* Generated Story Display */}
                   {generatedStory && !isGeneratingStory && (
-                    <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                      <div className="flex items-center justify-between mb-3">
-                        <Badge variant="outline" className="text-xs bg-green-100 text-green-800">Generated Story</Badge>
+                    <div className="mt-6 p-4 bg-green-500/10 rounded-xl border border-green-500/20">
+                      <div className="flex items-center justify-between mb-4">
+                        <Badge variant="outline" className="text-xs bg-green-500/20 text-green-400 border-green-500/30">Generated Story</Badge>
                         {!isEditingStory && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={modifyStory}
-                            className="text-xs"
+                            className="text-xs border-green-500/30 text-green-400 hover:bg-green-500/20"
                           >
                             Edit Story
                           </Button>
@@ -972,22 +1051,22 @@ export default function FrameGenerationPage() {
                       
                       {!isEditingStory ? (
                         /* Enhanced Story (Final Result) - Read Only */
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           <div>
-                            <h5 className="text-sm font-medium text-green-900 mb-1">
+                            <h5 className="text-base font-medium text-green-400 mb-2">
                               {generatedStory.enhancedStory.title}
                             </h5>
-                            <p className="text-sm text-green-800 mb-2">
+                            <p className="text-sm text-white mb-3 leading-relaxed">
                               {generatedStory.enhancedStory.overallStory}
                             </p>
                           </div>
                           
-                          <div className="space-y-2">
-                            <h6 className="text-sm font-medium text-green-900">Scene Breakdown:</h6>
-                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                          <div className="space-y-3">
+                            <h6 className="text-sm font-medium text-green-400">Scene Breakdown:</h6>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
                               {generatedStory.enhancedStory.scenes.map((scene: { sceneNumber: number; timeframe: string; description: string }, index: number) => (
-                                <div key={index} className="text-xs text-green-700 bg-white p-2 rounded border border-green-200">
-                                  <strong>Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
+                                <div key={index} className="text-sm text-white bg-secondary/50 p-3 rounded-lg border border-green-500/20">
+                                  <strong className="text-green-400">Scene {scene.sceneNumber} ({scene.timeframe}):</strong> {scene.description}
                                 </div>
                               ))}
                             </div>
@@ -1133,27 +1212,27 @@ export default function FrameGenerationPage() {
                   
                   {/* Story Generation Status */}
                   {isGeneratingStory && (
-                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm font-medium text-blue-800">Story Generation in Progress</span>
+                    <div className="mt-6 p-4 bg-primary/10 rounded-xl border border-primary/20">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-3 h-3 bg-primary rounded-full animate-pulse-slow"></div>
+                        <span className="text-base font-medium text-white">Story Generation in Progress</span>
                       </div>
                       
                       {/* Progress Bar */}
-                      <div className="mb-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-blue-700">Progress</span>
-                          <span className="text-xs font-medium text-blue-700">{Math.round(storyGenerationProgress)}%</span>
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-muted-foreground">Progress</span>
+                          <span className="text-sm font-medium text-white">{Math.round(storyGenerationProgress)}%</span>
                         </div>
-                        <Progress value={storyGenerationProgress} className="w-full h-2" />
+                        <Progress value={storyGenerationProgress} className="w-full h-3 bg-secondary" />
                       </div>
                       
                       {/* Progress indicator */}
                       {storyGenerationStep === 'complete' && (
-                        <div className="mt-2 pt-2 border-t border-blue-200">
+                        <div className="mt-3 pt-3 border-t border-primary/20">
                           <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-xs text-green-700 font-medium">Both steps completed successfully!</span>
+                            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                            <span className="text-sm text-green-400 font-medium">Both steps completed successfully!</span>
                           </div>
                         </div>
                       )}
@@ -1161,25 +1240,25 @@ export default function FrameGenerationPage() {
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-4 pt-4">
                   <Button
                     onClick={generateFrames}
                     disabled={!selectedImage || !prompt || !generatedStory || currentStep === "generating-frames"}
-                    className="flex-1"
+                    className="flex-1 btn-modern h-12 text-base font-medium"
                   >
                     {currentStep === "generating-frames" ? (
                       <>
-                        <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                        <Wand2 className="h-5 w-5 mr-3 animate-spin" />
                         Generating Frames...
                       </>
                     ) : !generatedStory ? (
                       <>
-                        <Grid3X3 className="h-4 w-4 mr-2" />
+                        <Grid3X3 className="h-5 w-5 mr-3" />
                         Generate Story First
                       </>
                     ) : (
                       <>
-                        <Grid3X3 className="h-4 w-4 mr-2" />
+                        <Grid3X3 className="h-5 w-5 mr-3" />
                         Generate Frames
                       </>
                     )}
@@ -1189,7 +1268,7 @@ export default function FrameGenerationPage() {
                     <Button
                       onClick={stopGeneration}
                       variant="outline"
-                      className="px-4"
+                      className="px-6 h-12 text-base font-medium border-destructive/30 text-destructive hover:bg-destructive/10"
                     >
                       Stop
                     </Button>
@@ -1198,57 +1277,59 @@ export default function FrameGenerationPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Grid3X3 className="h-5 w-5" />
+            <Card className="gradient-card card-hover">
+              <CardHeader className="pb-6">
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Grid3X3 className="h-6 w-6 text-primary" />
+                  </div>
                   Frame Generation Progress
                 </CardTitle>
-                <CardDescription>Individual frames are being generated from your prompt</CardDescription>
+                <CardDescription className="text-muted-foreground text-base">Individual frames are being generated from your prompt</CardDescription>
               </CardHeader>
               <CardContent>
                 {currentStep === "generating-frames" ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600 mb-2">
+                      <div className="text-3xl font-bold text-primary mb-3">
                         {Math.round(frameGenerationProgress)}%
                       </div>
-                      <Progress value={frameGenerationProgress} className="w-full" />
-                      <p className="text-sm text-gray-600 mt-2">
+                      <Progress value={frameGenerationProgress} className="w-full h-3 bg-secondary" />
+                      <p className="text-base text-muted-foreground mt-3">
                         Generating frames concurrently... {Object.keys(frameProgress).length} of {frameCount} completed
                       </p>
                       
                       {/* Skeleton loading animation for progress */}
                       {frameGenerationProgress < 100 && (
-                        <div className="mt-4 space-y-2">
-                          <div className="flex items-center justify-center space-x-2">
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="mt-6 space-y-3">
+                          <div className="flex items-center justify-center space-x-3">
+                            <div className="w-3 h-3 bg-primary rounded-full animate-bounce"></div>
+                            <div className="w-3 h-3 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                            <div className="w-3 h-3 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                           </div>
-                          <p className="text-xs text-gray-500">Processing frames...</p>
+                          <p className="text-sm text-muted-foreground">Processing frames...</p>
                         </div>
                       )}
                     </div>
 
                     {/* Individual Frame Progress */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Frame Progress:</h4>
-                      <div className={`grid gap-2 ${frameCount <= 6 ? 'grid-cols-6' : frameCount <= 8 ? 'grid-cols-8' : 'grid-cols-10'}`}>
+                    <div className="space-y-3">
+                      <h4 className="text-base font-medium text-white">Frame Progress:</h4>
+                      <div className={`grid gap-3 ${frameCount <= 6 ? 'grid-cols-6' : frameCount <= 8 ? 'grid-cols-8' : 'grid-cols-10'}`}>
                         {Array.from({ length: frameCount }, (_, i) => (
                           <div key={i} className="text-center">
                             {frameProgress[i] ? (
                               // Completed frame
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium bg-green-100 text-green-600">
+                              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30">
                                 ✓
                               </div>
                             ) : (
                               // Loading skeleton for incomplete frames
-                              <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse flex items-center justify-center">
-                                <div className="w-4 h-4 bg-gray-300 rounded-full animate-pulse"></div>
+                              <div className="w-10 h-10 rounded-full bg-secondary animate-pulse flex items-center justify-center">
+                                <div className="w-5 h-5 bg-muted-foreground rounded-full animate-pulse"></div>
                               </div>
                             )}
-                            <p className="text-xs text-gray-500 mt-1">Frame {i + 1}</p>
+                            <p className="text-xs text-muted-foreground mt-2">Frame {i + 1}</p>
                           </div>
                         ))}
                       </div>
@@ -1256,11 +1337,11 @@ export default function FrameGenerationPage() {
 
                     {/* Generated Frames - Only show completed frames */}
                     {generatedFrames.length > 0 && (
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium">Generated Frames ({generatedFrames.length} of {frameCount}):</h4>
-                        <div className="grid grid-cols-4 gap-2">
+                      <div className="space-y-3">
+                        <h4 className="text-base font-medium text-white">Generated Frames ({generatedFrames.length} of {frameCount}):</h4>
+                        <div className="grid grid-cols-4 gap-3">
                           {generatedFrames.map((frame, index) => (
-                            <div key={frame.id} className="aspect-square bg-gray-100 rounded border overflow-hidden relative flex items-center justify-center">
+                            <div key={frame.id} className="aspect-square bg-secondary rounded-lg border border-border overflow-hidden relative flex items-center justify-center">
                               <Image
                                 src={frame.imageUrl || "/placeholder.svg"}
                                 alt={`Frame ${index + 1}`}
@@ -1279,24 +1360,24 @@ export default function FrameGenerationPage() {
                     )}
                   </div>
                 ) : currentStep === "frames-ready" ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <FrameViewer frames={generatedFrames} />
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <div className="flex gap-3">
                       </div>
                       <Link href="/video-generation" className="flex-1">
-                        <Button className="w-full">
-                          <ArrowRight className="h-4 w-4 mr-2" />
+                        <Button className="w-full btn-modern h-12 text-base font-medium">
+                          <ArrowRight className="h-5 w-5 mr-3" />
                           Continue to Video Generation
                         </Button>
                       </Link>
                     </div>
                   </div>
                 ) : (
-                  <div className="aspect-video bg-gray-50 rounded-lg flex items-center justify-center">
-                    <div className="text-center space-y-2">
-                      <Grid3X3 className="h-12 w-12 mx-auto text-gray-300" />
-                      <p className="text-sm text-gray-500">Upload an image and enter a prompt to generate frames</p>
+                  <div className="aspect-video bg-secondary/30 rounded-xl flex items-center justify-center border-2 border-dashed border-border">
+                    <div className="text-center space-y-4">
+                      <Grid3X3 className="h-16 w-16 mx-auto text-muted-foreground" />
+                      <p className="text-base text-muted-foreground">Upload an image and enter a prompt to generate frames</p>
                     </div>
                   </div>
                 )}

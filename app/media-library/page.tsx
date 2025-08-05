@@ -326,14 +326,14 @@ export default function MediaLibraryPage() {
 
   // Enhanced Media Card Component
   const MediaCard = ({ item }: { item: MediaItem }) => (
-    <Card className="group hover:shadow-lg transition-all duration-200">
+    <Card className="gradient-card card-hover group">
       <CardContent className="p-4">
-        <div className="relative aspect-square mb-3 bg-gray-100 rounded-lg overflow-hidden">
+        <div className="relative aspect-square mb-4 bg-secondary/30 rounded-xl overflow-hidden border border-border">
           {item.type === 'image' ? (
             <img
               src={item.url}
               alt={item.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 cursor-pointer"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 cursor-pointer"
               onClick={() => viewFullResolution(item)}
               onError={(e) => {
                 console.error(`Failed to load image: ${item.name}`, {
@@ -358,7 +358,7 @@ export default function MediaLibraryPage() {
               }}
             />
           ) : (
-            <div className="relative w-full h-full cursor-pointer group-hover:scale-105 transition-transform duration-200">
+            <div className="relative w-full h-full cursor-pointer group-hover:scale-105 transition-transform duration-300">
               <video
                 src={item.url}
                 className="w-full h-full object-cover"
@@ -374,18 +374,18 @@ export default function MediaLibraryPage() {
               />
               {/* Fallback div - hidden by default, shown if video fails */}
               <div 
-                className="absolute inset-0 w-full h-full flex items-center justify-center bg-gray-200 transition-colors"
+                className="absolute inset-0 w-full h-full flex items-center justify-center bg-secondary/50 transition-colors"
                 style={{ display: 'none' }}
                 onClick={() => viewFullResolution(item)}
               >
                 <div className="text-center">
-                  <Play className="h-12 w-12 mx-auto text-blue-600 mb-2" />
-                  <p className="text-sm text-gray-600">Click to play</p>
+                  <Play className="h-12 w-12 mx-auto text-primary mb-2" />
+                  <p className="text-sm text-muted-foreground">Click to play</p>
                 </div>
               </div>
               {/* Play overlay icon */}
-              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200">
-                <Play className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-300">
+                <Play className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
             </div>
           )}
@@ -394,7 +394,7 @@ export default function MediaLibraryPage() {
           {item.folder && (
             <Badge 
               variant="secondary" 
-              className="absolute top-2 left-2 text-xs"
+              className="absolute top-3 left-3 text-xs bg-primary/20 text-primary border-primary/30"
               title={getFolderTooltip(item.key, item.folder)}
             >
               {getFolderDisplayName(item.key, item.folder)}
@@ -404,7 +404,7 @@ export default function MediaLibraryPage() {
           {/* Type Badge */}
           <Badge 
             variant={item.type === 'image' ? 'default' : 'outline'}
-            className="absolute top-2 right-2 text-xs"
+            className="absolute top-3 right-3 text-xs bg-secondary/80 text-white border-border"
           >
             {item.type === 'image' ? (
               <><FileImage className="w-3 h-3 mr-1" /> IMG</>
@@ -414,21 +414,21 @@ export default function MediaLibraryPage() {
           </Badge>
         </div>
         
-        <div className="space-y-2">
-          <h3 className="font-medium text-sm text-gray-900 truncate" title={item.name}>
+        <div className="space-y-3">
+          <h3 className="font-medium text-sm text-white truncate" title={item.name}>
             {item.name}
           </h3>
           
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{formatFileSize(item.size)}</span>
             <span>{formatDate(item.created_at)}</span>
           </div>
           
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             <Button
               size="sm"
               variant="outline"
-              className="flex-1 text-xs"
+              className="flex-1 text-xs border-border/30 text-muted-foreground hover:bg-secondary hover:text-white"
               onClick={() => viewFullResolution(item)}
             >
               <Eye className="h-3 w-3 mr-1" />
@@ -437,7 +437,7 @@ export default function MediaLibraryPage() {
             <Button
               size="sm"
               variant="outline"
-              className="flex-1 text-xs"
+              className="flex-1 text-xs border-border/30 text-muted-foreground hover:bg-secondary hover:text-white"
               onClick={() => downloadFile(item)}
             >
               <Download className="h-3 w-3 mr-1" />
@@ -446,7 +446,7 @@ export default function MediaLibraryPage() {
             <Button
               size="sm"
               variant="destructive"
-              className="text-xs"
+              className="text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
               onClick={() => deleteFile(item)}
             >
               <Trash2 className="h-3 w-3" />
@@ -459,11 +459,11 @@ export default function MediaLibraryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen gradient-bg">
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center space-y-4">
-            <Loader2 className="h-8 w-8 mx-auto animate-spin text-blue-600" />
-            <p className="text-gray-600">Loading your media library...</p>
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading your media library...</p>
           </div>
         </div>
       </div>
@@ -472,32 +472,32 @@ export default function MediaLibraryPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="min-h-screen gradient-bg">
         {/* Navigation Header */}
-        <nav className="bg-white shadow-sm border-b">
-          <div className="max-w-6xl mx-auto px-4 py-3">
+        <nav className="glass border-b border-border/50">
+          <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              <div className="flex items-center gap-8">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary via-purple-500 to-blue-500 bg-clip-text text-transparent">
                   AI Video Generator
                 </h1>
-                <div className="flex items-center gap-4">
-                  <Link href="/" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                <div className="flex items-center gap-2">
+                  <Link href="/" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary/50 rounded-xl transition-all duration-300">
                     <Home className="h-4 w-4" />
                     Frame Generation
                   </Link>
-                  <Link href="/video-generation" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  <Link href="/video-generation" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary/50 rounded-xl transition-all duration-300">
                     <Video className="h-4 w-4" />
                     Video Generation
                   </Link>
-                  <Link href="/media-library" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg">
+                  <Link href="/media-library" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary/20 rounded-xl border border-primary/30">
                     <FileImage className="h-4 w-4" />
                     Media Library
                   </Link>
-                  <Link href="/debug-s3" className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                  {/* <Link href="/debug-s3" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-white hover:bg-secondary/50 rounded-xl transition-all duration-300">
                     <AlertCircle className="h-4 w-4" />
                     Debug S3
-                  </Link>
+                  </Link> */}
                 </div>
               </div>
               <UserMenu />
@@ -505,22 +505,22 @@ export default function MediaLibraryPage() {
           </div>
         </nav>
 
-      <div className="p-4">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto space-y-8 animate-fade-in-up">
           {/* Page Header */}
           <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <h2 className="text-3xl font-bold text-gray-900">
+            <div className="space-y-3">
+              <h2 className="text-4xl font-bold text-white">
                 Media Library
               </h2>
-              <p className="text-lg text-gray-600">
+              <p className="text-lg text-muted-foreground">
                 Your uploaded images and videos from S3 storage
               </p>
               {/* <p className="text-sm text-gray-500">
                 Current User ID: {userId}
               </p> */}
             </div>
-            <Button onClick={fetchUserMedia} variant="outline">
+            <Button onClick={fetchUserMedia} variant="outline" className="btn-modern">
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
@@ -577,9 +577,9 @@ export default function MediaLibraryPage() {
           </Card> */}
 
           {error && (
-            <Card className="border-red-200 bg-red-50">
+            <Card className="gradient-card border-destructive/30 bg-destructive/10">
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-red-800">
+                <div className="flex items-center gap-2 text-destructive">
                   <AlertCircle className="h-4 w-4" />
                   <span>Error: {error}</span>
                 </div>
@@ -588,25 +588,29 @@ export default function MediaLibraryPage() {
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <FileImage className="h-8 w-8 text-blue-600" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="gradient-card card-hover">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/20 rounded-xl border border-primary/30">
+                    <FileImage className="h-8 w-8 text-primary" />
+                  </div>
                   <div>
-                    <p className="text-2xl font-bold">{images.length}</p>
-                    <p className="text-sm text-gray-600">Total Images</p>
+                    <p className="text-3xl font-bold text-white">{images.length}</p>
+                    <p className="text-sm text-muted-foreground">Total Images</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <FileVideo className="h-8 w-8 text-green-600" />
+            <Card className="gradient-card card-hover">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-green-500/20 rounded-xl border border-green-500/30">
+                    <FileVideo className="h-8 w-8 text-green-400" />
+                  </div>
                   <div>
-                    <p className="text-2xl font-bold">{videos.length}</p>
-                    <p className="text-sm text-gray-600">Total Videos</p>
+                    <p className="text-3xl font-bold text-white">{videos.length}</p>
+                    <p className="text-sm text-muted-foreground">Total Videos</p>
                   </div>
                 </div>
               </CardContent>
@@ -680,12 +684,12 @@ export default function MediaLibraryPage() {
               </div>
             </div>
 
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="images" className="flex items-center gap-2">
+            <TabsList className="grid w-full grid-cols-2 bg-secondary/50 border border-border">
+              <TabsTrigger value="images" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-white">
                 <FileImage className="h-4 w-4" />
                 Images ({images.length})
               </TabsTrigger>
-              <TabsTrigger value="videos" className="flex items-center gap-2">
+              <TabsTrigger value="videos" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-white">
                 <FileVideo className="h-4 w-4" />
                 Videos ({videos.length})
               </TabsTrigger>
@@ -695,21 +699,21 @@ export default function MediaLibraryPage() {
               </TabsTrigger> */}
             </TabsList>
 
-            <TabsContent value="images" className="space-y-4">
+            <TabsContent value="images" className="space-y-6">
               {(() => {
                 const { images: filteredImages } = getFilteredMedia()
                 return filteredImages.length === 0 ? (
-                  <Card>
+                  <Card className="gradient-card p-8 border border-border">
                     <CardContent className="p-12 text-center">
-                      <FileImage className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      <FileImage className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-xl font-semibold text-white mb-2">
                         No images found
                       </h3>
-                      <p className="text-gray-600 mb-6">
+                      <p className="text-muted-foreground mb-6">
                         {selectedSession ? 'No images found for this session.' : 'Upload some images to see them here.'}
                       </p>
                       <Link href="/">
-                        <Button>
+                        <Button className="btn-modern">
                           <FileImage className="h-4 w-4 mr-2" />
                           Generate Images
                         </Button>
@@ -717,7 +721,7 @@ export default function MediaLibraryPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredImages.map((image) => (
                       <MediaCard key={image.id} item={image} />
                     ))}
@@ -726,19 +730,19 @@ export default function MediaLibraryPage() {
               })()}
             </TabsContent>
 
-            <TabsContent value="videos" className="space-y-4">
+            <TabsContent value="videos" className="space-y-6">
               {videos.length === 0 ? (
-                <Card>
+                <Card className="gradient-card p-8 border border-border">
                   <CardContent className="p-12 text-center">
-                    <FileVideo className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    <FileVideo className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-xl font-semibold text-white mb-2">
                       No videos found
                     </h3>
-                    <p className="text-gray-600 mb-6">
+                    <p className="text-muted-foreground mb-6">
                       Generate some videos to see them here.
                     </p>
                     <Link href="/video-generation">
-                      <Button>
+                      <Button className="btn-modern">
                         <Video className="h-4 w-4 mr-2" />
                         Generate Videos
                       </Button>
@@ -746,9 +750,9 @@ export default function MediaLibraryPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {videos.map((video) => (
-                    <Card key={video.id} className="overflow-hidden">
+                    <Card key={video.id} className="gradient-card card-hover overflow-hidden">
                       <CardContent className="p-0">
                         <div className="aspect-video relative group">
                           <video
@@ -762,6 +766,7 @@ export default function MediaLibraryPage() {
                                 size="sm"
                                 variant="secondary"
                                 onClick={() => window.open(video.url, '_blank')}
+                                className="bg-secondary/80 hover:bg-secondary text-white"
                               >
                                 <Play className="h-4 w-4" />
                               </Button>
@@ -769,6 +774,7 @@ export default function MediaLibraryPage() {
                                 size="sm"
                                 variant="secondary"
                                 onClick={() => downloadFile(video)}
+                                className="bg-secondary/80 hover:bg-secondary text-white"
                               >
                                 <Download className="h-4 w-4" />
                               </Button>
@@ -782,9 +788,9 @@ export default function MediaLibraryPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="p-3">
-                          <p className="text-sm font-medium truncate">{video.name}</p>
-                          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+                        <div className="p-4">
+                          <p className="text-sm font-medium truncate text-white">{video.name}</p>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
                             <span>{formatFileSize(video.size)}</span>
                             <span>{formatDate(video.created_at)}</span>
                           </div>
@@ -855,38 +861,39 @@ export default function MediaLibraryPage() {
 
           {/* Image/Video Modal */}
           {selectedItem && (
-            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] overflow-auto">
-                <div className="p-4 border-b flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">{selectedItem.name}</h3>
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="gradient-card max-w-4xl max-h-[90vh] overflow-auto border border-border">
+                <div className="p-6 border-b border-border flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">{selectedItem.name}</h3>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setSelectedItem(null)}
+                    className="text-muted-foreground hover:text-white hover:bg-secondary/50"
                   >
                     ×
                   </Button>
                 </div>
-                <div className="p-4">
+                <div className="p-6">
                   {selectedItem.type === 'image' ? (
                     <Image
                       src={selectedItem.url}
                       alt={selectedItem.name}
                       width={800}
                       height={600}
-                      className="max-w-full h-auto"
+                      className="max-w-full h-auto rounded-lg"
                     />
                   ) : (
                     <video
                       src={selectedItem.url}
                       controls
-                      className="max-w-full h-auto"
+                      className="max-w-full h-auto rounded-lg"
                     />
                   )}
-                  <div className="mt-4 space-y-2 text-sm text-gray-600">
-                    <p><strong>Size:</strong> {formatFileSize(selectedItem.size)}</p>
-                    <p><strong>Created:</strong> {formatDate(selectedItem.created_at)}</p>
-                    <p><strong>Updated:</strong> {formatDate(selectedItem.updated_at)}</p>
+                  <div className="mt-6 space-y-2 text-sm text-muted-foreground">
+                    <p><strong className="text-white">Size:</strong> {formatFileSize(selectedItem.size)}</p>
+                    <p><strong className="text-white">Created:</strong> {formatDate(selectedItem.created_at)}</p>
+                    <p><strong className="text-white">Updated:</strong> {formatDate(selectedItem.updated_at)}</p>
                   </div>
                 </div>
               </div>
@@ -898,13 +905,13 @@ export default function MediaLibraryPage() {
       {/* Full Resolution View Modal */}
       {viewModalOpen && viewModalItem && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/95 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={() => setViewModalOpen(false)}
         >
           <div className="relative max-w-full max-h-full">
             <button
               onClick={() => setViewModalOpen(false)}
-              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-black bg-opacity-50 rounded-full p-2"
+              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10 bg-black/50 backdrop-blur-sm rounded-full p-3 border border-white/20"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -915,23 +922,23 @@ export default function MediaLibraryPage() {
               <img
                 src={viewModalItem.url}
                 alt={viewModalItem.name}
-                className="max-w-full max-h-full object-contain"
+                className="max-w-full max-h-full object-contain rounded-lg"
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
               <video
                 src={viewModalItem.url}
                 controls
-                className="max-w-full max-h-full"
+                className="max-w-full max-h-full rounded-lg"
                 onClick={(e) => e.stopPropagation()}
               >
                 Your browser does not support the video tag.
               </video>
             )}
             
-            <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-75 text-white p-4 rounded">
-              <h3 className="font-semibold">{viewModalItem.name}</h3>
-              <p className="text-sm text-gray-300">
+            <div className="absolute bottom-4 left-4 right-4 bg-black/80 backdrop-blur-sm text-white p-6 rounded-xl border border-white/10">
+              <h3 className="font-semibold text-lg">{viewModalItem.name}</h3>
+              <p className="text-sm text-gray-300 mt-2">
                 {viewModalItem.folder && (
                   <span className="mr-4">Folder: {viewModalItem.folder}</span>
                 )}
@@ -942,13 +949,13 @@ export default function MediaLibraryPage() {
                   <span>Created: {formatDate(viewModalItem.created_at)}</span>
                 )}
               </p>
-              <div className="flex gap-2 mt-2">
+              <div className="flex gap-3 mt-4">
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     downloadFile(viewModalItem)
                   }}
-                  className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+                  className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg text-sm transition-all duration-300"
                 >
                   <Download className="w-4 h-4" />
                   Download
@@ -959,7 +966,7 @@ export default function MediaLibraryPage() {
                     setViewModalOpen(false)
                     deleteFile(viewModalItem)
                   }}
-                  className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+                  className="flex items-center gap-2 bg-destructive hover:bg-destructive/80 text-white px-4 py-2 rounded-lg text-sm transition-all duration-300"
                 >
                   <Trash2 className="w-4 h-4" />
                   Delete
