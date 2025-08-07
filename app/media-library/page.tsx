@@ -527,7 +527,7 @@ export default function MediaLibraryPage() {
           </div>
 
           {/* User ID Input */}
-          {/* <Card>
+          <Card>
             <CardContent className="p-4">
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900">View Different User's Media</h3>
@@ -574,7 +574,7 @@ export default function MediaLibraryPage() {
                 </p>
               </div>
             </CardContent>
-          </Card> */}
+          </Card>
 
           {error && (
             <Card className="gradient-card border-destructive/30 bg-destructive/10">

@@ -1,46 +1,53 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { useAuth } from '@/lib/auth-context'
-import { Button } from '@/components/ui/button'
-import { User, LogOut } from 'lucide-react'
+import { useAuth } from "@/lib/auth-context"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { User, LogOut, Settings } from "lucide-react"
 
 export default function UserMenu() {
   const { user, signOut } = useAuth()
-  const [isSigningOut, setIsSigningOut] = useState(false)
-
-  const handleSignOut = async () => {
-    setIsSigningOut(true)
-    try {
-      await signOut()
-    } catch (error) {
-      console.error('Error signing out:', error)
-    } finally {
-      setIsSigningOut(false)
-    }
-  }
 
   if (!user) {
-    return null
+    return (
+      <Button variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50">
+        <User className="h-4 w-4 mr-2" />
+        Sign In
+      </Button>
+    )
   }
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="text-sm text-muted-foreground hidden md:block">
-        <span className="font-medium text-white">{user.email}</span>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleSignOut}
-        disabled={isSigningOut}
-        className="flex items-center gap-2 text-muted-foreground hover:text-white hover:bg-secondary/50 transition-all duration-300"
-      >
-        <LogOut className="h-4 w-4" />
-        <span className="hidden sm:inline">
-          {isSigningOut ? 'Signing out...' : 'Sign out'}
-        </span>
-      </Button>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50">
+          <User className="h-4 w-4 mr-2" />
+          {user.email || user.name || "User"}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56 bg-white border-gray-200">
+        <DropdownMenuLabel className="text-gray-900">My Account</DropdownMenuLabel>
+        <DropdownMenuSeparator className="bg-gray-200" />
+        <DropdownMenuItem className="text-gray-700 hover:bg-gray-50 cursor-pointer">
+          <Settings className="h-4 w-4 mr-2" />
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="bg-gray-200" />
+        <DropdownMenuItem 
+          onClick={signOut}
+          className="text-red-600 hover:bg-red-50 cursor-pointer"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Sign Out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 } 
