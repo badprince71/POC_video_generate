@@ -848,11 +848,11 @@ export default function FrameGenerationPage() {
     <ProtectedRoute>
       <div className="min-h-screen gradient-bg">
         {/* Navigation Header */}
-        <nav className="nav-modern sticky top-0 z-50">
+        <nav className="glass border-b border-border/20 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-8">
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                   AI Video Generator
                 </h1>
                 <div className="flex items-center gap-2">
