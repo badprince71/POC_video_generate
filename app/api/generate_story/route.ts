@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
+// Ensure this route runs on Node.js runtime (not Edge) and allow longer processing time
+export const runtime = 'nodejs'
+export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
