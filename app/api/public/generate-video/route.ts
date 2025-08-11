@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withApiKeyAuth } from '@/lib/auth/api-key-auth'
 import { uploadImageToS3 } from '@/lib/upload/s3_upload'
 import { generateVideosFromS3Frames } from '@/lib/services/s3-video-generation'
 
@@ -95,5 +94,4 @@ async function generateVideoHandler(request: NextRequest) {
   }
 }
 
-// Export the handler wrapped with API key authentication
-export const POST = withApiKeyAuth(generateVideoHandler) 
+export const POST = generateVideoHandler 

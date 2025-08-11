@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withApiKeyAuth } from '@/lib/auth/api-key-auth'
 import OpenAI from 'openai'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -186,5 +185,4 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
     }
 }
 
-// Export the handler wrapped with API key authentication
-export const POST = withApiKeyAuth(generateImagesHandler) 
+export const POST = generateImagesHandler 

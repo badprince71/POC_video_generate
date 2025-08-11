@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withApiKeyAuth } from '@/lib/auth/api-key-auth'
 import { uploadImageToS3 } from '@/lib/upload/s3_upload'
 
 async function uploadImageHandler(request: NextRequest) {
@@ -52,5 +51,4 @@ async function uploadImageHandler(request: NextRequest) {
   }
 }
 
-// Export the handler wrapped with API key authentication
-export const POST = withApiKeyAuth(uploadImageHandler) 
+export const POST = uploadImageHandler 

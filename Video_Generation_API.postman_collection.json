@@ -1,0 +1,515 @@
+{
+	"info": {
+		"_postman_id": "12345678-1234-1234-1234-123456789012",
+		"name": "Video Generation API",
+		"description": "Collection for testing the Video Generation API endpoints including authentication, rate limiting, and all public endpoints.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Status Check",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property('status');",
+							"    pm.expect(response.status).to.eql('ok');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});",
+							"",
+							"pm.test(\"Response is valid JSON\", function () {",
+							"    pm.response.to.be.json;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/status",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"status"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Upload Image",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Upload successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has S3 key\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property('s3Key');",
+							"    pm.expect(response).to.have.property('imageUrl');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 5000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{api_key}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"imageData\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\",\n  \"filename\": \"test-image.png\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/upload-image",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"upload-image"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Generate Images",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Generation successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has generated images\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property('generatedCount');",
+							"    pm.expect(response).to.have.property('requestedCount');",
+							"    pm.expect(response.generatedCount).to.be.at.least(1);",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 30000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(30000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{api_key}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"image\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\",\n  \"prompt\": \"A person walking in a park\",\n  \"numImages\": 2\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/generate-images",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"generate-images"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Generate Video",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Video generation successful\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has video URL\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.have.property('videoUrl');",
+							"    pm.expect(response).to.have.property('status');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 60000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(60000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{api_key}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"image\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\",\n  \"prompt\": \"A person walking in a park\",\n  \"duration\": 5\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/generate-video",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"generate-video"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Authentication Tests",
+			"item": [
+				{
+					"name": "No API Key (Should Fail)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 401 without API key\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test(\"Should have error message\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"imageData\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/upload-image",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"upload-image"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Invalid API Key (Should Fail)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 401 with invalid API key\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer invalid-api-key-123"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"imageData\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/upload-image",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"upload-image"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Tests to verify authentication is working properly"
+		},
+		{
+			"name": "Error Handling Tests",
+			"item": [
+				{
+					"name": "Invalid JSON Payload",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 400 for invalid JSON\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{api_key}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"invalid\": json: \"this is not valid json\",\n  \"missing\": closing brace"
+						},
+						"url": {
+							"raw": "{{base_url}}/upload-image",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"upload-image"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Missing Required Fields",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Should return 400 for missing fields\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Should have error message\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{api_key}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"filename\": \"test.png\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/upload-image",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"upload-image"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Tests to verify error handling works correctly"
+		},
+		{
+			"name": "Rate Limiting Tests",
+			"item": [
+				{
+					"name": "Multiple Status Requests",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// This will be run multiple times to test rate limiting",
+									"pm.environment.set(\"request_count\", parseInt(pm.environment.get(\"request_count\") || 0) + 1);"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const requestCount = parseInt(pm.environment.get(\"request_count\") || 0);",
+									"",
+									"if (requestCount > 60) {",
+									"    pm.test(\"Should be rate limited after 60 requests\", function () {",
+									"        pm.response.to.have.status(429);",
+									"    });",
+									"} else {",
+									"    pm.test(\"Request should succeed\", function () {",
+									"        pm.response.to.have.status(200);",
+									"    });",
+									"}",
+									"",
+									"pm.test(\"Should have rate limit headers\", function () {",
+									"    pm.expect(pm.response.headers).to.have.property('X-RateLimit-Limit');",
+									"    pm.expect(pm.response.headers).to.have.property('X-RateLimit-Remaining');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{api_key}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"status"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Tests to verify rate limiting is working"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set timestamp for all requests",
+					"pm.environment.set(\"timestamp\", new Date().toISOString());"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test that runs for all requests",
+					"pm.test(\"Response time is reasonable\", function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(60000);",
+					"});",
+					"",
+					"pm.test(\"Response is valid JSON\", function () {",
+					"    if (pm.response.headers.get(\"Content-Type\").includes(\"application/json\")) {",
+					"        pm.response.to.be.json;",
+					"    }",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000/api/public",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "sk-test-1234567890abcdef",
+			"type": "string"
+		}
+	]
+}
+
+
+
+
+

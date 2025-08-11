@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { API_KEYS, getApiKeyConfig, updateLastUsed } from '@/lib/auth/api-keys-config'
 
-// Simple admin authentication (in production, use proper admin auth)
-function isAdmin(request: NextRequest): boolean {
-  const adminKey = request.headers.get('x-admin-key')
-  return adminKey === process.env.ADMIN_API_KEY
-}
-
 export async function GET(request: NextRequest) {
-  if (!isAdmin(request)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
-  }
 
   try {
     // Return all API keys with usage information
@@ -41,15 +32,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAdmin(request)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
-  }
 
   try {
     const { name, description, rateLimit, allowedEndpoints } = await request.json()
 
     // Generate a new API key
     const apiKey = `sk-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+    console.log("-----------------apiKey-----------------",apiKey);
     
     // Add to API_KEYS (in production, save to database)
     API_KEYS[apiKey] = {
@@ -80,9 +69,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  if (!isAdmin(request)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
-  }
 
   try {
     const { apiKey, updates } = await request.json()
@@ -110,9 +96,6 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isAdmin(request)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 401 })
-  }
 
   try {
     const { apiKey } = await request.json()
