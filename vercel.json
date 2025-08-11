@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "app/api/generate_story/route.ts": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "memory": 1024
     },
     "app/api/merge_video_clips/route.ts": {
