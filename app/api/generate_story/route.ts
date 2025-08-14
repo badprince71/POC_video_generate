@@ -40,7 +40,23 @@ function extractJSONFromResponse(content: string): string {
 
 export async function POST(request: NextRequest) {
     try {
-        const { prompt, frameCount = 6 } = await request.json();
+        const contentType = request.headers.get('content-type') || ''
+        let prompt: string | undefined
+        let frameCount: number | undefined
+
+        if (contentType.includes('multipart/form-data')) {
+            const form = await request.formData()
+            prompt = (form.get('prompt') as string) || undefined
+            const frameCountRaw = form.get('frameCount') as string
+            if (typeof frameCountRaw === 'string' && frameCountRaw.length > 0) {
+                frameCount = Number(frameCountRaw)
+            }
+        } else {
+            const body = await request.json();
+            prompt = body.prompt
+            frameCount = typeof body.frameCount === 'number' ? body.frameCount : undefined
+        }
+        frameCount = frameCount ?? 6
         
         // Validation
         if (!prompt) {

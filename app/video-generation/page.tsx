@@ -1564,7 +1564,7 @@ Mood: ${fullStory.mood}` :
                                   </>
                                 )}
                               </Button>
-                              <div className="flex items-center gap-2 text-sm">
+                              {/* <div className="flex items-center gap-2 text-sm">
                                 {autoSaving ? (
                                   <div className="flex items-center gap-2 text-blue-600">
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1576,7 +1576,7 @@ Mood: ${fullStory.mood}` :
                                     Auto-saved to {userId}/{requestId}/reference-frames/
                                   </div>
                                 )}
-                              </div>
+                              </div> */}
                             </div>
                           </>
                         ) : (
