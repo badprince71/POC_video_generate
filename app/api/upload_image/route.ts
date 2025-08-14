@@ -18,9 +18,26 @@ interface UploadImageResult {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageData, frameId } = await request.json()
+    const contentType = request.headers.get('content-type') || ''
+    let imageDataBase64: string | undefined
+    let frameId: string | number | undefined
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData()
+      const uploaded = (form.get('image') as File) || (form.get('file') as File) || null
+      if (uploaded && typeof uploaded !== 'string') {
+        const arrayBuffer = await uploaded.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        imageDataBase64 = buffer.toString('base64')
+      }
+      frameId = (form.get('frameId') as string) || undefined
+    } else {
+      const { imageData, frameId: bodyFrameId } = await request.json()
+      imageDataBase64 = imageData?.replace(/^data:image\/\w+;base64,/, '')
+      frameId = bodyFrameId
+    }
     
-    if (!imageData) {
+    if (!imageDataBase64) {
       return NextResponse.json({ error: "Image data is required" }, { status: 400 })
     }
 
@@ -29,7 +46,7 @@ export async function POST(request: NextRequest) {
     
     // Upload to Supabase Storage
     const result = await uploadImage({
-      imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
+      imageData: imageDataBase64, // already base64 (no data URL prefix)
       userId: userId,
       type: 'frames',
       filename: `frame_${frameId}_${Date.now()}.png`

@@ -16,9 +16,33 @@ interface UploadImageResult {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageData, frameId, isUserUpload = false, folderPath } = await request.json()
-    
-    if (!imageData) {
+    const contentType = request.headers.get('content-type') || ''
+    let imageDataBase64: string | undefined
+    let frameId: string | number | undefined
+    let isUserUpload = false
+    let folderPath: string | undefined
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData()
+      const uploaded = (form.get('image') as File) || (form.get('file') as File) || null
+      if (uploaded && typeof uploaded !== 'string') {
+        const arrayBuffer = await uploaded.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        imageDataBase64 = buffer.toString('base64')
+      }
+      const isUserUploadRaw = form.get('isUserUpload') as string
+      isUserUpload = typeof isUserUploadRaw === 'string' ? ['true','1','yes','on'].includes(isUserUploadRaw.toLowerCase()) : false
+      folderPath = (form.get('folderPath') as string) || undefined
+      frameId = (form.get('frameId') as string) || undefined
+    } else {
+      const { imageData, frameId: bodyFrameId, isUserUpload: bodyIsUserUpload = false, folderPath: bodyFolderPath } = await request.json()
+      imageDataBase64 = imageData?.replace(/^data:image\/\w+;base64,/, '')
+      isUserUpload = !!bodyIsUserUpload
+      folderPath = bodyFolderPath
+      frameId = bodyFrameId
+    }
+
+    if (!imageDataBase64) {
       return NextResponse.json({ error: "Image data is required" }, { status: 400 })
     }
 
@@ -26,7 +50,7 @@ export async function POST(request: NextRequest) {
     if (folderPath) {
       // New folder structure: <userid>/<requestid>/reference-frames/
       const result = await uploadImageToS3({
-        imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
+        imageData: imageDataBase64, // already base64 (no data URL prefix)
         userId: folderPath, // Use folderPath directly as it contains the full path
         type: 'reference-frames', // This will be ignored when userId contains full path
         filename: `frame_${frameId}_${Date.now()}.png`
@@ -45,7 +69,7 @@ export async function POST(request: NextRequest) {
       const uploadType: 'reference-frames' | 'user-uploads' = isUserUpload ? 'user-uploads' : 'reference-frames';
       
       const result = await uploadImageToS3({
-        imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
+        imageData: imageDataBase64, // already base64 (no data URL prefix)
         userId: userId,
         type: uploadType,
         filename: `frame_${frameId}_${Date.now()}.png`

@@ -166,13 +166,14 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
 
     const duration = 5;
     // Create the video generation task
+    // Prefer passing a URL rather than a large data URL to reduce request size/timeouts
     const imageToVideo = await client.imageToVideo.create({
       model: 'gen4_turbo',
       promptImage: startImage,
       ratio: frameAspectRatio as "1280:720" | "720:1280" | "1104:832" | "832:1104" | "960:960" | "1584:672" | "1280:768" | "768:1280",
       promptText: generatePrompt,
       duration: duration as 5 | 10,
-      // duration: '20s',
+      // Explicit timeout bump at SDK layer if supported in future; currently SDK handles internally
     })
     
     if (!imageToVideo.id) {
@@ -182,6 +183,8 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
 
     // Poll for completion
     let task;
+    const startedAt = Date.now();
+    const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes
     while (true) {
       task = await client.tasks.retrieve(imageToVideo.id);
       console.log("Status check:", task);
@@ -198,7 +201,12 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
         throw new Error("Video generation failed");
       }
 
-      // Wait 10 seconds before polling again (as recommended in the sample)
+      // Abort if exceeding max wait
+      if (Date.now() - startedAt > MAX_WAIT_MS) {
+        throw new Error('Request timed out while waiting for Runway task to complete');
+      }
+
+      // Wait 10 seconds before polling again
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
 

@@ -3,9 +3,36 @@ import { uploadImageToS3 } from '@/lib/upload/s3_upload'
 
 async function uploadImageHandler(request: NextRequest) {
   try {
-    const { imageData, filename, userId, requestId, type = 'user-uploads' } = await request.json()
+    const contentType = request.headers.get('content-type') || ''
+    let imageDataBase64: string | undefined
+    let filename: string | undefined
+    let userId: string | undefined
+    let requestId: string | undefined
+    let type: 'user-uploads' | 'reference-frames' | undefined
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData()
+      const uploaded = (form.get('image') as File) || (form.get('file') as File) || null
+      if (uploaded && typeof uploaded !== 'string') {
+        const arrayBuffer = await uploaded.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        imageDataBase64 = buffer.toString('base64')
+      }
+      filename = (form.get('filename') as string) || undefined
+      userId = (form.get('userId') as string) || undefined
+      requestId = (form.get('requestId') as string) || undefined
+      const typeRaw = (form.get('type') as string) || undefined
+      type = (typeRaw === 'reference-frames' || typeRaw === 'user-uploads') ? typeRaw : undefined
+    } else {
+      const body = await request.json()
+      imageDataBase64 = body.imageData?.replace(/^data:image\/\w+;base64,/, '')
+      filename = body.filename
+      userId = body.userId
+      requestId = body.requestId
+      type = body.type
+    }
     
-    if (!imageData) {
+    if (!imageDataBase64) {
       return NextResponse.json({ 
         error: "Image data is required" 
       }, { status: 400 })
@@ -25,9 +52,9 @@ async function uploadImageHandler(request: NextRequest) {
 
     // Upload image to S3
     const result = await uploadImageToS3({
-      imageData: imageData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
+      imageData: imageDataBase64, // already base64 (no data URL prefix)
       userId: folderPath,
-      type: type as 'reference-frames' | 'user-uploads',
+      type: (type || 'user-uploads') as 'reference-frames' | 'user-uploads',
       filename: finalFilename
     })
 

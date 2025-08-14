@@ -293,17 +293,37 @@ export async function getFrameFromS3(key: string): Promise<GetFrameResult> {
       return { error: 'No data returned from S3' };
     }
 
-    // Convert stream to buffer
-    const chunks: Uint8Array[] = [];
-    const reader = response.Body.transformToWebStream().getReader();
-    
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
+    // Convert body to bytes in a Node-safe way
+    // Prefer transformToByteArray when available (AWS SDK v3 on Node 18+)
+    // Fallback to stream reader if needed
+    let buffer: Buffer;
+    const body: any = response.Body;
+    if (body && typeof body.transformToByteArray === 'function') {
+      const bytes: Uint8Array = await body.transformToByteArray();
+      buffer = Buffer.from(bytes);
+    } else if (body && typeof body.transformToWebStream === 'function') {
+      const chunks: Uint8Array[] = [];
+      const reader = body.transformToWebStream().getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      buffer = Buffer.concat(chunks);
+    } else {
+      // Last resort: try to read as Node stream
+      const nodeStream: NodeJS.ReadableStream | undefined = body as any;
+      if (!nodeStream) {
+        return { error: 'Unsupported S3 response body type' };
+      }
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        nodeStream.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        nodeStream.on('end', () => resolve());
+        nodeStream.on('error', reject);
+      });
+      buffer = Buffer.concat(chunks);
     }
-    
-    const buffer = Buffer.concat(chunks);
     
     console.log(`✓ Successfully retrieved frame from S3: ${key} (${buffer.length} bytes)`);
     

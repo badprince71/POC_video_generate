@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, isSupabaseConfigured } from '@/utils/supabase'
+import { uploadImageToS3, getSignedUrlFromS3, sanitizeFilename } from '@/lib/upload/s3_upload'
 
 interface FrameData {
   id: number
@@ -108,6 +109,106 @@ export async function POST(request: NextRequest) {
       console.warn('User is anonymous - authentication might be required')
     }
 
+    // Upload frames to S3 if needed and normalize URLs
+    // Folder path: <userId>/<sessionId>/reference-frames
+    const folderPath = `${userId}/${sessionId}/reference-frames`
+    const expiresIn = 3600
+
+    const normalizedFrames = await Promise.all((frames || []).map(async (frame) => {
+      try {
+        const url: string = frame.imageUrl || ''
+        const isAlreadyUrl = /^https?:\/\//i.test(url)
+        const isDataUrl = /^data:image\//i.test(url)
+
+        if (isAlreadyUrl) {
+          return frame
+        }
+
+        let base64Data: string | null = null
+        if (isDataUrl) {
+          base64Data = url.replace(/^data:image\/\w+;base64,/, '')
+        }
+
+        if (!base64Data) {
+          // Not a URL and not a data URL; skip upload
+          return frame
+        }
+
+        const filename = `frame_${frame.id ?? 'idx'}_${Date.now()}.png`
+        const uploadResult = await uploadImageToS3({
+          imageData: base64Data,
+          userId: folderPath,
+          type: 'reference-frames',
+          filename
+        })
+
+        const signedUrl = await getSignedUrlFromS3(uploadResult.key, expiresIn)
+
+        return {
+          ...frame,
+          imageUrl: signedUrl,
+          s3Key: uploadResult.key
+        }
+      } catch (e) {
+        console.warn('Failed to upload frame to S3, keeping original URL', e)
+        return frame
+      }
+    }))
+
+    // Upload all frame images to S3 under <userId>/<sessionId>/reference-frames
+    // and replace frame.imageUrl with the S3 proxy URL
+    const targetFolderPath = `${userId}/${sessionId}/reference-frames`
+    let uploadedCount = 0
+
+    const origin = new URL(request.url).origin
+
+    const uploadResults = await Promise.all(
+      (frames || []).map(async (frame, index) => {
+        try {
+          let base64Data: string | null = null
+          const source = frame.imageUrl || ''
+
+          if (source.startsWith('data:image')) {
+            // data URL
+            const commaIndex = source.indexOf('base64,')
+            base64Data = commaIndex >= 0 ? source.substring(commaIndex + 'base64,'.length) : null
+          } else {
+            // Fetch from URL (absolute or relative)
+            const urlToFetch = source.startsWith('http') ? source : `${origin}${source}`
+            const resp = await fetch(urlToFetch)
+            if (!resp.ok) {
+              throw new Error(`HTTP ${resp.status}`)
+            }
+            const arrayBuffer = await resp.arrayBuffer()
+            base64Data = Buffer.from(arrayBuffer).toString('base64')
+          }
+
+          if (!base64Data) {
+            throw new Error('No image data')
+          }
+
+          const baseName = sanitizeFilename(`frame_${frame.id ?? index}_${Date.now()}.png`)
+          const { publicUrl, key } = await uploadImageToS3({
+            imageData: base64Data,
+            userId: targetFolderPath,
+            type: 'reference-frames',
+            filename: baseName
+          })
+
+          uploadedCount += 1
+          // Replace imageUrl with proxy URL for DB
+          frame.imageUrl = publicUrl
+
+          return { success: true, key }
+        } catch (err) {
+          console.warn('Failed to upload frame to S3, keeping original URL', { index, error: err instanceof Error ? err.message : String(err) })
+          return { success: false }
+        }
+      })
+    )
+
+    console.log(`Uploaded ${uploadedCount}/${frames?.length ?? 0} frames to S3 path: ${targetFolderPath}`)
+
     // Save session metadata to database
     console.log('Attempting to save session to database...')
     const { data: sessionData, error: sessionError } = await supabase
@@ -140,7 +241,7 @@ export async function POST(request: NextRequest) {
 
     // Save individual frames to database
     console.log('Preparing to save frames...')
-    const framesToInsert = frames.map(frame => ({
+    const framesToInsert = normalizedFrames.map(frame => ({
       session_id: sessionId,
       frame_number: frame.id,
       timestamp: frame.timestamp,

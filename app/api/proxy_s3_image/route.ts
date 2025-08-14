@@ -4,11 +4,19 @@ import { getFrameFromS3 } from '@/lib/upload/s3_upload'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const key = searchParams.get('key')
+    let key = searchParams.get('key')
 
     if (!key) {
       return NextResponse.json({ error: "S3 key is required" }, { status: 400 })
     }
+
+    // Normalize key: decode once, strip leading slashes and any query/hash fragments
+    try {
+      key = decodeURIComponent(key)
+    } catch {}
+    key = key.replace(/^\/+/, '')
+    if (key.includes('?')) key = key.split('?')[0]
+    if (key.includes('#')) key = key.split('#')[0]
 
     // Get the image from S3
     const result = await getFrameFromS3(key)
@@ -41,3 +49,6 @@ export async function GET(request: NextRequest) {
     }, { status: 500 })
   }
 } 
+
+// Ensure Node.js runtime (not edge) for AWS SDK compatibility
+export const runtime = 'nodejs'

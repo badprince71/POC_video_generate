@@ -1,34 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import { writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
-import { existsSync } from 'fs'
+import { uploadImageToS3, getSignedUrlFromS3 } from '@/lib/upload/s3_upload'
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
-
-// Ensure uploads directory exists
-async function ensureUploadsDir() {
-    const uploadsDir = join(process.cwd(), 'public', 'generated-images')
-    if (!existsSync(uploadsDir)) {
-        await mkdir(uploadsDir, { recursive: true })
-    }
-    return uploadsDir
-}
-
-// Save base64 image to file system
-async function saveImageToFile(base64Data: string, filename: string): Promise<string> {
-    const uploadsDir = await ensureUploadsDir()
-    const filepath = join(uploadsDir, filename)
-    
-    // Convert base64 to buffer
-    const buffer = Buffer.from(base64Data, 'base64')
-    await writeFile(filepath, buffer)
-    
-    // Return public URL path
-    return `/generated-images/${filename}`
-}
 
 // Generate unique filename
 function generateFilename(index: number): string {
@@ -39,25 +15,63 @@ function generateFilename(index: number): string {
 
 async function generateImagesHandler(request: NextRequest) {
     try {
-        const { image, prompt, numImages = 5 } = await request.json();
+        const contentType = request.headers.get('content-type') || ''
+        let prompt: string | undefined
+        let numImages: number | undefined
+        let currentReferenceImage: string | undefined // base64 without data URL prefix
+        let userId: string | undefined
+        let requestId: string | undefined
+        let expiresIn: number | undefined
+        const headerUserId = request.headers.get('x-user-id') || request.headers.get('x-userid') || undefined
+        const headerRequestId = request.headers.get('x-request-id') || request.headers.get('x-requestid') || undefined
+
+        if (contentType.includes('multipart/form-data')) {
+            const form = await request.formData()
+            prompt = (form.get('prompt') as string) || undefined
+            const numImagesRaw = form.get('numImages') as string
+            if (typeof numImagesRaw === 'string' && numImagesRaw.length > 0) {
+                numImages = Number(numImagesRaw)
+            }
+            userId = (form.get('userId') as string) || undefined
+            requestId = (form.get('requestId') as string) || undefined
+            const expiresInRaw = form.get('expiresIn') as string
+            expiresIn = typeof expiresInRaw === 'string' && expiresInRaw.length > 0 ? Number(expiresInRaw) : undefined
+            const uploaded = (form.get('image') as File) || (form.get('file') as File) || null
+            if (uploaded && typeof uploaded !== 'string') {
+                const arrayBuffer = await uploaded.arrayBuffer()
+                const buffer = Buffer.from(arrayBuffer)
+                currentReferenceImage = buffer.toString('base64')
+            }
+        } else {
+            const body = await request.json();
+            prompt = body.prompt
+            numImages = body.numImages
+            userId = body.userId
+            requestId = body.requestId
+            expiresIn = typeof body.expiresIn === 'number' ? body.expiresIn : undefined
+            if (body.image) {
+                currentReferenceImage = body.image
+            }
+        }
         
         // Validation
         if (!prompt) {
             return NextResponse.json({ error: "Prompt is required" }, { status: 400 })
         }
-        if (!image) {
+        if (!currentReferenceImage) {
             return NextResponse.json({ error: "Image is required" }, { status: 400 })
         }
         if (!openai.apiKey) {
             return NextResponse.json({ error: "OpenAI API key is not set" }, { status: 500 })
         }
 
-        const imageCount = numImages || 3;
+        const imageCount = numImages || 5;
         console.log(`Generating ${imageCount} images with prompt: "${prompt}"`);
 
-        const imageUrls: string[] = [];
+        const results: Array<{ imageUrl: string; proxyUrl: string; s3Key: string; filename: string }> = [];
         const errors: string[] = [];
-        let currentReferenceImage = image; // Start with the original uploaded image
+        const finalUserId = headerUserId || userId || 'public-user'
+        const finalRequestId = headerRequestId || requestId || `req-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
 
         // Generate images sequentially, each based on the previous one
         for (let i = 0; i < imageCount; i++) {
@@ -134,14 +148,24 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
                 }
 
                 if (response.data && response.data[0] && response.data[0].b64_json) {
-                    // Save the generated image to file system
+                    // Upload to S3 and collect signed URL
                     const filename = generateFilename(i);
-                    const imagePath = await saveImageToFile(response.data[0].b64_json, filename);
-                    imageUrls.push(imagePath);
-                    console.log(`Generated image ${i + 1}: ${imagePath}`);
+                    const folderPath = `${finalUserId}/${finalRequestId}/reference-frames`
+                    const base64Data: string = response.data[0].b64_json as string
+
+                    const uploadResult = await uploadImageToS3({
+                        imageData: base64Data,
+                        userId: folderPath,
+                        type: 'reference-frames',
+                        filename
+                    })
+
+                    const signedUrl = await getSignedUrlFromS3(uploadResult.key, expiresIn ?? 3600)
+                    results.push({ imageUrl: signedUrl, proxyUrl: uploadResult.publicUrl, s3Key: uploadResult.key, filename })
+                    console.log(`Generated image ${i + 1}: ${uploadResult.key}`);
                     
                     // Update reference image for next iteration (use the just-generated image)
-                    currentReferenceImage = response.data[0].b64_json;
+                    currentReferenceImage = base64Data;
                 } else {
                     errors.push(`Failed to generate image ${i + 1}: No image data received`);
                 }
@@ -158,7 +182,7 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
         }
 
         // Return results
-        if (imageUrls.length === 0) {
+        if (results.length === 0) {
             return NextResponse.json({ 
                 error: "Failed to generate any images", 
                 details: errors 
@@ -170,9 +194,12 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
         }
 
         return NextResponse.json({ 
-            imageUrls,
-            generatedCount: imageUrls.length,
+            success: true,
+            userId: finalUserId,
+            requestId: finalRequestId,
+            generatedCount: results.length,
             requestedCount: imageCount,
+            images: results,
             errors: errors.length > 0 ? errors : undefined
         });
 

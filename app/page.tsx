@@ -99,11 +99,12 @@ export default function FrameGenerationPage() {
 
   // Function to convert S3 URLs to proxy URLs to avoid CORS issues
   const convertS3UrlToProxy = (url: string): string => {
-    if (url.includes('amazonaws.com') && !url.includes('/api/proxy_s3_image')) {
-      // Extract the key from the S3 URL
+    if (url.includes('/api/proxy_s3_image')) return url
+    if (url.includes('amazonaws.com')) {
       const urlParts = url.split('.com/')
       if (urlParts.length > 1) {
-        const key = urlParts[1]
+        // Remove any query string from the key (e.g., from presigned URLs)
+        const key = urlParts[1].split('?')[0]
         return `/api/proxy_s3_image?key=${encodeURIComponent(key)}`
       }
     }
@@ -474,46 +475,6 @@ export default function FrameGenerationPage() {
         console.log(`Frame ${i + 1} generated successfully`)
         console.log(`Image data length: ${response.imageUrl?.length || 0} characters`)
 
-        // IMMEDIATELY upload frame to S3 after generation
-        let s3Frame = frame
-        if (response.imageUrl && response.imageUrl.startsWith('data:image/')) {
-          try {
-            console.log(`Uploading frame ${i + 1} to S3 immediately...`)
-            
-            // Upload to S3 using the consistent session ID
-            const uploadResponse = await fetch('/api/upload_image_s3', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              credentials: 'include',
-                              body: JSON.stringify({
-                  imageData: response.imageUrl,
-                  frameId: frame.id,
-                  isUserUpload: false,
-                  folderPath: `${userId}/${requestId}/reference-frames`
-                }),
-            })
-
-            const uploadResult = await uploadResponse.json()
-            
-            if (uploadResult.error) {
-              console.error(`Failed to upload frame ${i + 1} to S3:`, uploadResult.error)
-              // Continue with base64 URL if upload fails
-            } else {
-              console.log(`Frame ${i + 1} uploaded to S3 successfully:`, uploadResult.imageUrl)
-              // Update frame with S3 URL
-              s3Frame = {
-                ...frame,
-                imageUrl: uploadResult.imageUrl
-              }
-            }
-          } catch (uploadError) {
-            console.error(`Error uploading frame ${i + 1} to S3:`, uploadError)
-            // Continue with base64 URL if upload fails
-          }
-        }
-
         // Update progress for this frame
         setFrameProgress(prev => {
           const newProgress = { ...prev, [i]: true }
@@ -523,7 +484,7 @@ export default function FrameGenerationPage() {
           return newProgress
         })
 
-        return { frame: s3Frame, index: i }
+        return { frame, index: i }
       })
 
       // Generate all frames concurrently
@@ -541,7 +502,42 @@ export default function FrameGenerationPage() {
       
       // Create frames array in correct order
       const newFrames = sortedResults.map(result => result.frame)
-      
+
+      // Batch upload all generated images to S3 using the same requestId and folder
+      const framesNeedingUpload = newFrames
+        .map((f, idx) => ({ f, idx }))
+        .filter(({ f }) => f.imageUrl && f.imageUrl.startsWith('data:image/'))
+
+      if (framesNeedingUpload.length > 0) {
+        console.log(`Uploading ${framesNeedingUpload.length} frames to S3 (batch) ...`)
+        await Promise.all(framesNeedingUpload.map(async ({ f, idx }) => {
+          try {
+            const uploadResponse = await fetch('/api/upload_image_s3', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                imageData: f.imageUrl,
+                frameId: f.id,
+                isUserUpload: false,
+                folderPath: `${userId}/${requestId}/reference-frames`
+              }),
+            })
+            const uploadResult = await uploadResponse.json()
+            if (!uploadResponse.ok || uploadResult.error) {
+              console.error(`Failed to upload frame ${f.id}:`, uploadResult.error || uploadResponse.statusText)
+              return
+            }
+            newFrames[idx] = { ...f, imageUrl: uploadResult.imageUrl }
+          } catch (err) {
+            console.error(`Error uploading frame ${f.id} to S3:`, err)
+          }
+        }))
+        console.log('Batch upload complete')
+      }
+
       // Update state with all frames at once, ensuring S3 URLs are converted to proxy URLs
       setGeneratedFrames(ensureFrameUrls(newFrames))
       setFrameGenerationProgress(100)

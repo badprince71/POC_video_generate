@@ -4,7 +4,46 @@ import { generateVideosFromS3Frames } from '@/lib/services/s3-video-generation'
 
 async function generateVideoHandler(request: NextRequest) {
   try {
-    const { images, prompt, userId, requestId } = await request.json()
+    const contentType = request.headers.get('content-type') || ''
+    let images: string[] | undefined
+    let prompt: string | undefined
+    let userId: string | undefined
+    let requestId: string | undefined
+
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData()
+      prompt = (form.get('prompt') as string) || undefined
+      userId = (form.get('userId') as string) || undefined
+      requestId = (form.get('requestId') as string) || undefined
+
+      // Collect multiple file inputs: image, image1, image2, files[]
+      const collected: string[] = []
+      const possibleKeys = ['image', 'image1', 'image2', 'image3', 'file', 'file1', 'file2']
+      for (const key of possibleKeys) {
+        const maybe = form.get(key)
+        if (maybe && maybe instanceof File) {
+          const ab = await maybe.arrayBuffer()
+          const buf = Buffer.from(ab)
+          collected.push(buf.toString('base64'))
+        }
+      }
+      // Handle files[] as multiple
+      const files = form.getAll('files[]')
+      for (const f of files) {
+        if (f && f instanceof File) {
+          const ab = await f.arrayBuffer()
+          const buf = Buffer.from(ab)
+          collected.push(buf.toString('base64'))
+        }
+      }
+      images = collected
+    } else {
+      const body = await request.json()
+      images = body.images
+      prompt = body.prompt
+      userId = body.userId
+      requestId = body.requestId
+    }
     
     if (!images || !Array.isArray(images) || images.length === 0) {
       return NextResponse.json({ 

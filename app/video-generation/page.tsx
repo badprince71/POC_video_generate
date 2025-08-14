@@ -125,11 +125,12 @@ export default function VideoGenerationPage() {
   const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"];
   // Function to convert S3 URLs to proxy URLs to avoid CORS issues
   const convertS3UrlToProxy = (url: string): string => {
-    if (url.includes('amazonaws.com') && !url.includes('/api/proxy_s3_image')) {
-      // Extract the key from the S3 URL
+    if (url.includes('/api/proxy_s3_image')) return url
+    if (url.includes('amazonaws.com')) {
       const urlParts = url.split('.com/')
       if (urlParts.length > 1) {
-        const key = urlParts[1]
+        // Strip query string if present
+        const key = urlParts[1].split('?')[0]
         return `/api/proxy_s3_image?key=${encodeURIComponent(key)}`
       }
     }
@@ -728,19 +729,28 @@ Mood: ${fullStory.mood}` :
             `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
 
 
-          const response = generateVideoClip({
-            startImage: frameImageData,
-            prompt: `${sceneStory} ${systemPrompt}`, // Scene-specific story as user prompt
-            clipIndex: i,
-            totalClips: clips.length,
-            frameAspectRatio: frameAspectRatio
-          });
-          // Generate video clip and update state with original URL
-          const videoResult = await response;
+          const apiRes = await fetch('/api/generate_single_video_clip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              startImage: frameImageData,
+              prompt: `${sceneStory} ${systemPrompt}`,
+              clipIndex: i,
+              totalClips: clips.length,
+              frameAspectRatio: frameAspectRatio,
+              userId,
+              requestId,
+              expiresIn: 3600
+            })
+          })
+          const videoResult = await apiRes.json()
+          if (!apiRes.ok || !videoResult?.success) {
+            throw new Error(videoResult?.error || 'Video generation failed')
+          }
           const completedClip = {
             ...clip,
             status: 'completed' as const,
-            videoUrl: videoResult.videoUrl, // Use the original video URL
+            videoUrl: videoResult.proxyUrl,
             isFallback: false
           }
 
@@ -750,8 +760,7 @@ Mood: ${fullStory.mood}` :
 
           console.log(`Clip ${i + 1} generated successfully:`, videoResult.videoUrl)
 
-          // Auto-save the completed clip
-          await autoSaveVideoClip(completedClip)
+          // Already saved to S3 by API; skip autosave
 
         } catch (error) {
           console.error(`Error generating clip ${i + 1}:`, error)
@@ -1811,51 +1820,33 @@ Mood: ${fullStory.mood}` :
                                     Style: ${fullStory.style}
                                     Mood: ${fullStory.mood}` :
                                       `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
-                                    let result: any;
-                                    const response = generateVideoClip({
-                                      startImage: startImageData,
-                                      clipIndex: clip.id - 1,
-                                      totalClips: videoClips.length,
-                                      prompt: sceneStory,
-                                      frameAspectRatio: frameAspectRatio
-                                    })
-                                    result = await response;
-                                    // Upload the retry clip to Supabase
-                                    try {
-                                      const currentSession = localStorage.getItem('currentSession')
-                                      const { userId } = currentSession ? JSON.parse(currentSession) : { userId: `user_${Date.now()}` }
-
-                                      console.log(`Uploading retry video clip ${clip.id} to Supabase...`)
-                                      const uploadResult = await uploadMovieToStorage({
-                                        videoUrl: result.videoUrl,
-                                        userId: 'user',
-                                        filename: `video_clip_${clip.id}_retry_${Date.now()}`,
-                                        duration: 5,
-                                        thumbnail: generatedFrames[clip.startFrame]?.imageUrl
+                                    const apiRes = await fetch('/api/generate_single_video_clip', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        startImage: startImageData,
+                                        prompt: `${sceneStory} ${systemPrompt}`,
+                                        clipIndex: clip.id - 1,
+                                        totalClips: videoClips.length,
+                                        frameAspectRatio: frameAspectRatio,
+                                        userId,
+                                        requestId,
+                                        expiresIn: 3600
                                       })
-
-                                      // Update clip with success and Supabase URL
-                                      setVideoClips(prev => prev.map(c =>
-                                        c.id === clip.id ? {
-                                          ...c,
-                                          status: 'completed',
-                                          videoUrl: uploadResult.publicUrl,
-                                          optimizedPrompt: result.optimizedPrompt
-                                        } : c
-                                      ))
-
-                                      console.log(`Retry clip ${clip.id} uploaded to Supabase successfully:`, uploadResult.publicUrl)
-                                    } catch (uploadError) {
-                                      console.error(`Error uploading retry clip ${clip.id} to Supabase:`, uploadError)
-                                      // Keep the original URL if upload fails
-                                      setVideoClips(prev => prev.map(c =>
-                                        c.id === clip.id ? {
-                                          ...c,
-                                          status: 'completed',
-                                          videoUrl: result.videoUrl,
-                                        } : c
-                                      ))
+                                    })
+                                    const result = await apiRes.json()
+                                    if (!apiRes.ok || !result?.success) {
+                                      throw new Error(result?.error || 'Video generation failed')
                                     }
+
+                                    // Update clip with success using S3 proxy URL returned by API
+                                    setVideoClips(prev => prev.map(c =>
+                                      c.id === clip.id ? {
+                                        ...c,
+                                        status: 'completed',
+                                        videoUrl: result.proxyUrl
+                                      } : c
+                                    ))
 
                                   } catch (retryError) {
                                     console.error(`Error retrying clip ${clip.id}:`, retryError)
