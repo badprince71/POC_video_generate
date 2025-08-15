@@ -89,6 +89,7 @@ export async function uploadVideo({
     // Upload via API route (bypasses CORS issues)
     const apiResponse = await fetch('/api/upload_video_s3', {
       method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY}` },
       body: formData
     });
 
@@ -169,6 +170,7 @@ export async function uploadMovieToS3({
     // Upload via API route instead of direct S3 upload
     const apiResponse = await fetch('/api/upload_video_s3', {
       method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY}` },
       body: formData
     });
 

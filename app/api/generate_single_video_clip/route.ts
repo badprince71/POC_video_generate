@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSignedUrlFromS3, uploadVideoToS3, sanitizeFilename, uploadImageToS3 } from '@/lib/upload/s3_upload'
 import { generateVideoClip } from '@/lib/generate_video_clips/generate_clips'
 import sharp from 'sharp'
+import { withApiKeyAuth } from '../../../lib/auth/api-key-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,7 +20,7 @@ interface GenerateSingleVideoClipRequest {
   expiresIn?: number
 }
 
-export async function POST(request: NextRequest) {
+async function generateSingleVideoClip(request: NextRequest) {
   try {
     const contentType = request.headers.get('content-type') || ''
 
@@ -263,5 +264,7 @@ async function normalizeImageAspect(input: string): Promise<string> {
     return input
   }
 }
+
+export const POST = withApiKeyAuth(generateSingleVideoClip);
 
 

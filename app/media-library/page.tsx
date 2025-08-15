@@ -63,6 +63,8 @@ interface SessionData {
 
 export default function MediaLibraryPage() {
   const { user } = useAuth()
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY
+  const getAuthHeaders = () => ({ Authorization: `Bearer ${API_KEY}` })
   const [images, setImages] = useState<MediaItem[]>([])
   const [videos, setVideos] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -95,7 +97,7 @@ export default function MediaLibraryPage() {
       setLoading(true)
       setError(null)
 
-      const response = await fetch(`/api/get_user_media?includeStats=true&userId=${encodeURIComponent(userId)}`)
+	const response = await fetch(`/api/get_user_media?includeStats=true&userId=${encodeURIComponent(userId)}`, { headers: { ...getAuthHeaders() } })
       const result = await response.json()
 
       if (!result.success) {
@@ -159,7 +161,7 @@ export default function MediaLibraryPage() {
       let downloadUrl = item.downloadUrl
 
       if (!downloadUrl) {
-        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}&download=true`)
+    const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}&download=true`, { headers: { ...getAuthHeaders() } })
         const result = await response.json()
 
         if (!result.success) {
@@ -193,7 +195,7 @@ export default function MediaLibraryPage() {
     try {
       setLoading(true)
 
-      const response = await fetch(`/api/delete_media?key=${encodeURIComponent(item.key)}&userId=${userId}`, {
+    const response = await fetch(`/api/delete_media?key=${encodeURIComponent(item.key)}&userId=${userId}`, {
         method: 'DELETE'
       })
 
@@ -343,7 +345,7 @@ export default function MediaLibraryPage() {
                 })
                 e.currentTarget.src = '/placeholder-image.svg'
                 // Try generating a fresh presigned URL
-                fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}`)
+      fetch(`/api/get_presigned_url?key=${encodeURIComponent(item.key)}`, { headers: { ...getAuthHeaders() } })
                   .then(res => res.json())
                   .then(data => {
                     if (data.success && data.url !== item.url) {

@@ -29,6 +29,20 @@ export const API_KEYS: Record<string, ApiKeyConfig> = {
     createdAt: '2024-01-01T00:00:00.000Z'
   },
   
+  // User-provided API key
+  'jilqy9efy8jk79v9': {
+    apiKey: 'jilqy9efy8jk79v9',
+    name: 'Primary API Key',
+    description: 'User-provided key for all API access',
+    rateLimit: {
+      requestsPerMinute: 60,
+      requestsPerHour: 1000,
+    },
+    allowedEndpoints: ['*'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+  
   // Production API key (replace with your actual key)
   'sk-prod-abcdef1234567890': {
     apiKey: 'sk-prod-abcdef1234567890',
@@ -97,6 +111,7 @@ export function updateLastUsed(apiKey: string): void {
 
 // Function to validate API key format
 export function isValidApiKeyFormat(apiKey: string): boolean {
-  // Basic validation - API keys should start with 'sk-' and be at least 20 characters
-  return apiKey.startsWith('sk-') && apiKey.length >= 20
-} 
+  // Relaxed: accept alphanumeric keys 12-64 chars, or legacy 'sk-' keys
+  if (apiKey.startsWith('sk-') && apiKey.length >= 20) return true
+  return /^[A-Za-z0-9_-]{12,64}$/.test(apiKey)
+}

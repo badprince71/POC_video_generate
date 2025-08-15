@@ -50,6 +50,8 @@ type GenerationStep = "input" | "generating-frames" | "frames-ready"
 
 export default function FrameGenerationPage() {
   const { user } = useAuth()
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY
+  const getAuthHeaders = () => ({ Authorization: `Bearer ${API_KEY}` })
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string>("")
   const [prompt, setPrompt] = useState("")
@@ -126,6 +128,7 @@ export default function FrameGenerationPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -205,6 +208,7 @@ export default function FrameGenerationPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -342,6 +346,7 @@ export default function FrameGenerationPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({ 
           prompt: enhancedPrompt,
@@ -430,6 +435,7 @@ export default function FrameGenerationPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...getAuthHeaders(),
           },
           body: JSON.stringify({ 
             image: inputImage, 
@@ -516,6 +522,7 @@ export default function FrameGenerationPage() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                ...getAuthHeaders(),
               },
               credentials: 'include',
               body: JSON.stringify({
@@ -673,6 +680,7 @@ export default function FrameGenerationPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...getAuthHeaders(),
           },
           credentials: 'include',
           body: JSON.stringify({

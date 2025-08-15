@@ -88,6 +88,8 @@ type VideoGenerationStep = "input" | "generating-clips" | "clips-ready" | "mergi
 
 export default function VideoGenerationPage() {
   const { user } = useAuth()
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY
+  const getAuthHeaders = () => ({ Authorization: `Bearer ${API_KEY}` })
 
   // Generate unique request ID for this video generation session
   const [requestId] = useState(() => `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
@@ -232,7 +234,7 @@ export default function VideoGenerationPage() {
 
         // Fetch frames from database with better error handling  
         console.log(`Fetching frames for sessionId: ${sessionId}, userId: ${userId}`)
-        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`)
+        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`, { headers: { ...getAuthHeaders() } })
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
@@ -283,7 +285,7 @@ export default function VideoGenerationPage() {
             // First, try to find any recent sessions for this user
             try {
               console.log('Attempting to find recent sessions for user:', userId)
-              const recentSessionsResponse = await fetch(`/api/get_recent_sessions?userId=${userId}`)
+              const recentSessionsResponse = await fetch(`/api/get_recent_sessions?userId=${userId}`, { headers: { ...getAuthHeaders() } })
               if (recentSessionsResponse.ok) {
                 const recentSessions = await recentSessionsResponse.json()
                 console.log('Recent sessions found:', recentSessions)
@@ -293,7 +295,7 @@ export default function VideoGenerationPage() {
                   const mostRecentSession = recentSessions.sessions[0]
                   console.log('Trying most recent session:', mostRecentSession.session_id)
 
-                  const recentFramesResponse = await fetch(`/api/get_frames?sessionId=${mostRecentSession.session_id}&userId=user`)
+                  const recentFramesResponse = await fetch(`/api/get_frames?sessionId=${mostRecentSession.session_id}&userId=user`, { headers: { ...getAuthHeaders() } })
                   if (recentFramesResponse.ok) {
                     const recentFramesResult = await recentFramesResponse.json()
                     if (recentFramesResult.frames && recentFramesResult.frames.length > 0) {
@@ -350,10 +352,11 @@ export default function VideoGenerationPage() {
                 const frameNumber = (index + 1).toString().padStart(2, '0')
 
                 // Upload to S3
-                const uploadResponse = await fetch('/api/upload_image_s3', {
+            const uploadResponse = await fetch('/api/upload_image_s3', {
                   method: 'POST',
                   headers: {
-                    'Content-Type': 'application/json',
+                'Content-Type': 'application/json',
+                ...getAuthHeaders(),
                   },
                   credentials: 'include',
                   body: JSON.stringify({
@@ -434,7 +437,7 @@ export default function VideoGenerationPage() {
       showToast.info('Attempting to recover frames from S3...')
 
       // First, try to get frames from database again (in case they were saved with base64)
-      const dbResponse = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`)
+        const dbResponse = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`, { headers: { ...getAuthHeaders() } })
       if (dbResponse.ok) {
         const dbResult = await dbResponse.json()
         if (dbResult.frames && dbResult.frames.length > 0) {
@@ -450,10 +453,11 @@ export default function VideoGenerationPage() {
 
             // Upload frames to S3
             const uploadPromises = framesWithBase64.map(async (frame: VideoFrame, index: number) => {
-              const uploadResponse = await fetch('/api/upload_image_s3', {
+                const uploadResponse = await fetch('/api/upload_image_s3', {
                 method: 'POST',
                 headers: {
-                  'Content-Type': 'application/json',
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
                 },
                 credentials: 'include',
                 body: JSON.stringify({
@@ -494,7 +498,7 @@ export default function VideoGenerationPage() {
       }
 
       // If no frames in database or no base64 URLs, try to list frames from S3
-      const response = await fetch(`/api/list_s3_frames?userId=${userId}`)
+      const response = await fetch(`/api/list_s3_frames?userId=${userId}`, { headers: { ...getAuthHeaders() } })
       if (!response.ok) {
         throw new Error('Failed to list S3 frames')
       }
@@ -539,7 +543,7 @@ export default function VideoGenerationPage() {
     try {
       const userId = 'user' // Fixed userId for video clips
 
-      const response = await fetch(`/api/get_user_media?userId=${userId}`)
+      const response = await fetch(`/api/get_user_media?userId=${userId}`, { headers: { ...getAuthHeaders() } })
       const result = await response.json()
 
       if (!result.success) {
@@ -575,6 +579,7 @@ export default function VideoGenerationPage() {
       const response = await fetch('/api/upload_video_s3', {
         method: 'POST',
         credentials: 'include',
+        headers: { ...getAuthHeaders() },
         body: formData
       })
 
@@ -616,7 +621,7 @@ export default function VideoGenerationPage() {
       let downloadUrl = clip.downloadUrl
 
       if (!downloadUrl) {
-        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(clip.key)}&download=true`)
+        const response = await fetch(`/api/get_presigned_url?key=${encodeURIComponent(clip.key)}&download=true`, { headers: { ...getAuthHeaders() } })
         const result = await response.json()
 
         if (!result.success) {
@@ -731,7 +736,7 @@ Mood: ${fullStory.mood}` :
 
           const apiRes = await fetch('/api/generate_single_video_clip', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({
               startImage: frameImageData,
               prompt: `${sceneStory} ${systemPrompt}`,
@@ -1822,7 +1827,7 @@ Mood: ${fullStory.mood}` :
                                       `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
                                     const apiRes = await fetch('/api/generate_single_video_clip', {
                                       method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
+                                      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                                       body: JSON.stringify({
                                         startImage: startImageData,
                                         prompt: `${sceneStory} ${systemPrompt}`,

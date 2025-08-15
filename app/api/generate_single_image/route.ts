@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { uploadImageToS3, getSignedUrlFromS3 } from '@/lib/upload/s3_upload'
+import { withApiKeyAuth } from '../../../lib/auth/api-key-auth'
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -11,7 +12,7 @@ function formatImageData(base64Data: string): string {
     return `data:image/png;base64,${base64Data}`
 }
 
-export async function POST(request: NextRequest) {
+async function generateSingleImage(request: NextRequest) {
     try {
         const contentType = request.headers.get('content-type') || ''
 		let prompt: string | undefined
@@ -204,4 +205,8 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
             details: error instanceof Error ? error.message : 'Unknown error'
         }, { status: 500 });
     }
+}
+
+export async function POST(request: NextRequest) {
+    return withApiKeyAuth(generateSingleImage)(request);
 } 

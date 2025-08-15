@@ -63,12 +63,15 @@ export function S3VideoGenerator({ userId, onVideoGenerated, className }: S3Vide
     loadFrames()
   }, [userId])
 
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY
+  const getAuthHeaders = () => ({ Authorization: `Bearer ${API_KEY}` })
+
   const loadFrames = async () => {
     try {
       setCurrentStep('loading_frames')
       setErrorMessage('')
       
-      const response = await fetch(`/api/process_s3_video_workflow?action=list_frames&userId=${userId}`)
+      const response = await fetch(`/api/process_s3_video_workflow?action=list_frames&userId=${userId}`, { headers: { ...getAuthHeaders() } })
       const result = await response.json()
       
       if (result.error) {
@@ -98,7 +101,7 @@ export function S3VideoGenerator({ userId, onVideoGenerated, className }: S3Vide
 
       const response = await fetch('/api/process_s3_video_workflow', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           userId,
           action: 'generate_videos',
@@ -143,7 +146,7 @@ export function S3VideoGenerator({ userId, onVideoGenerated, className }: S3Vide
       
       const response = await fetch('/api/process_s3_video_workflow', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           userId,
           action: 'prepare_merge',

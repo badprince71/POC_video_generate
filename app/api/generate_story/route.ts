@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { withApiKeyAuth } from '../../../lib/auth/api-key-auth'
 
 // Ensure this route runs on Node.js runtime (not Edge) and allow longer processing time
 export const runtime = 'nodejs'
@@ -38,7 +39,7 @@ function extractJSONFromResponse(content: string): string {
     return result;
 }
 
-export async function POST(request: NextRequest) {
+async function generateStory(request: NextRequest) {
     try {
         const contentType = request.headers.get('content-type') || ''
         let prompt: string | undefined
@@ -418,3 +419,5 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
         }, { status: 500 });
     }
 }
+
+export const POST = withApiKeyAuth(generateStory);

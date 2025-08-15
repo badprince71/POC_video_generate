@@ -276,7 +276,7 @@ export class S3VideoGenerationService {
             console.log('🔄 Converting image to base64 to avoid CORS issues...')
             const conversionResponse = await fetch('/api/convert_s3_image_to_base64', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_KEY}` },
               body: JSON.stringify({
                 s3Key: frame.key,
                 imageUrl: frame.publicUrl,
