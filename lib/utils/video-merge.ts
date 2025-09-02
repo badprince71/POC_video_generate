@@ -47,6 +47,7 @@ export class VideoMerger {
   private ctx: CanvasRenderingContext2D
   private mediaRecorder: MediaRecorder | null = null
   private chunks: Blob[] = []
+  private letterboxBackground: string = '#000' // black bars to avoid stretch
 
   constructor() {
     this.canvas = document.createElement('canvas')
@@ -175,7 +176,32 @@ export class VideoMerger {
               return
             }
 
-            this.ctx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height)
+            // Clear and draw letterbox background
+            this.ctx.fillStyle = this.letterboxBackground
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+
+            // Compute aspect-fit rect to avoid distortion of overlays/text within clips
+            const sw = video.videoWidth || this.canvas.width
+            const sh = video.videoHeight || this.canvas.height
+            const sAspect = sw / sh
+            const dAspect = this.canvas.width / this.canvas.height
+            let dw = this.canvas.width
+            let dh = this.canvas.height
+            let dx = 0
+            let dy = 0
+            if (sAspect > dAspect) {
+              // source wider → fit width
+              dw = this.canvas.width
+              dh = Math.round(dw / sAspect)
+              dy = Math.round((this.canvas.height - dh) / 2)
+            } else {
+              // source taller → fit height
+              dh = this.canvas.height
+              dw = Math.round(dh * sAspect)
+              dx = Math.round((this.canvas.width - dw) / 2)
+            }
+
+            this.ctx.drawImage(video, dx, dy, dw, dh)
             requestAnimationFrame(drawFrame)
           }
 
@@ -314,7 +340,27 @@ export class VideoMerger {
               setTimeout(playVideo, 100) // Small delay between videos
               return
             }
-            this.ctx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height)
+            // Fill background, then aspect-fit
+            this.ctx.fillStyle = this.letterboxBackground
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+            const sw = video.videoWidth || this.canvas.width
+            const sh = video.videoHeight || this.canvas.height
+            const sAspect = sw / sh
+            const dAspect = this.canvas.width / this.canvas.height
+            let dw = this.canvas.width
+            let dh = this.canvas.height
+            let dx = 0
+            let dy = 0
+            if (sAspect > dAspect) {
+              dw = this.canvas.width
+              dh = Math.round(dw / sAspect)
+              dy = Math.round((this.canvas.height - dh) / 2)
+            } else {
+              dh = this.canvas.height
+              dw = Math.round(dh * sAspect)
+              dx = Math.round((this.canvas.width - dw) / 2)
+            }
+            this.ctx.drawImage(video, dx, dy, dw, dh)
             requestAnimationFrame(drawFrames)
           }
           

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import sharp from 'sharp'
 import { uploadImageToS3, getSignedUrlFromS3 } from '@/lib/upload/s3_upload'
 import { withApiKeyAuth } from '../../../lib/auth/api-key-auth'
 
@@ -25,6 +26,7 @@ async function generateSingleImage(request: NextRequest) {
 		let userId: string | undefined
 		let requestId: string | undefined
 		let expiresIn: number | undefined
+        let frameAspectRatio: string | undefined
 
 		// Allow overriding via headers (useful for server-to-server or Postman)
 		const headerUserId = request.headers.get('x-user-id') || request.headers.get('x-userid') || undefined
@@ -46,6 +48,7 @@ async function generateSingleImage(request: NextRequest) {
 			userId = (form.get('userId') as string) || undefined
 			requestId = (form.get('requestId') as string) || undefined
 			const expiresInRaw = form.get('expiresIn') as string
+            frameAspectRatio = (form.get('frameAspectRatio') as string) || undefined
 			expiresIn = typeof expiresInRaw === 'string' && expiresInRaw.length > 0 ? Number(expiresInRaw) : undefined
 			frameIndex = frameIndexRaw !== undefined && frameIndexRaw !== null ? Number(frameIndexRaw) : undefined
 			totalFrames = totalFramesRaw !== undefined && totalFramesRaw !== null ? Number(totalFramesRaw) : undefined
@@ -63,6 +66,7 @@ async function generateSingleImage(request: NextRequest) {
 			userId = body.userId
 			requestId = body.requestId
 			expiresIn = typeof body.expiresIn === 'number' ? body.expiresIn : undefined
+            frameAspectRatio = body.frameAspectRatio
 			if (body.image) {
 				const imageBuffer = Buffer.from(body.image, 'base64')
 				imageFile = new File([imageBuffer], 'reference.png', { type: 'image/png' })
@@ -165,7 +169,35 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
 
 		if (response.data && response.data[0] && response.data[0].b64_json) {
 			// Upload generated image to S3 and return a presigned URL
-			const base64Data = response.data[0].b64_json
+			let base64Data = response.data[0].b64_json
+
+            // If aspect ratio requested, pad/resize non-destructively using sharp
+            if (frameAspectRatio) {
+                try {
+                    // Parse ratio like "1280:720"
+                    const [wStr, hStr] = frameAspectRatio.split(':')
+                    const targetW = Math.max(1, parseInt(wStr, 10) || 0)
+                    const targetH = Math.max(1, parseInt(hStr, 10) || 0)
+
+                    if (targetW > 0 && targetH > 0) {
+                        const inputBuffer = Buffer.from(base64Data, 'base64')
+                        // Convert to PNG and fit within target, padding to avoid cropping or distortion
+                        const outputBuffer = await sharp(inputBuffer)
+                            .resize({
+                                width: targetW,
+                                height: targetH,
+                                fit: 'contain',
+                                background: { r: 0, g: 0, b: 0, alpha: 0 }
+                            })
+                            .png()
+                            .toBuffer()
+
+                        base64Data = outputBuffer.toString('base64')
+                    }
+                } catch (padErr) {
+                    console.warn('Aspect ratio processing failed, using original image', padErr)
+                }
+            }
 			const finalUserId = headerUserId || userId || 'public-user'
 			const finalRequestId = headerRequestId || requestId || `req-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
 			const folderPath = `${finalUserId}/${finalRequestId}/reference-frames`
@@ -190,6 +222,7 @@ IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph
 				frameIndex: frameIndex,
 				totalFrames: totalFrames,
 				expiresIn: expiresIn ?? 3600,
+                frameAspectRatio: frameAspectRatio,
 				success: true
 			});
 		} else {

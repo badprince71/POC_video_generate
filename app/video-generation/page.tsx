@@ -103,7 +103,12 @@ export default function VideoGenerationPage() {
   const [videoClips, setVideoClips] = useState<VideoClip[]>([])
   const [clipGenerationProgress, setClipGenerationProgress] = useState(0)
   const [mergeProgress, setMergeProgress] = useState(0)
-  const [frameAspectRatio, setFrameAspectRatio] = useState("1280:720")
+  const [frameAspectRatio, setFrameAspectRatio] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('frameAspectRatio') || '1280:720'
+    }
+    return '1280:720'
+  })
   const [isGeneratingClips, setIsGeneratingClips] = useState(false)
   const [isMergingClips, setIsMergingClips] = useState(false)
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0)
@@ -1542,6 +1547,7 @@ Mood: ${fullStory.mood}` :
                                 onChange={(e) => {
                                   setFrameAspectRatio(e.target.value)
                                   // Clear story when aspect ratio changes
+                                  try { localStorage.setItem('frameAspectRatio', e.target.value) } catch {}
                                 }}
                                 className="w-50 mr-2 px-8 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                 disabled={isGeneratingClips}

@@ -169,6 +169,13 @@ async function generateSingleVideoClip(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error generating single video clip:', error)
+    // Map known errors to appropriate HTTP status codes
+    if (error instanceof Error && (error.name === 'InsufficientCreditsError' || error.message === 'INSUFFICIENT_CREDITS')) {
+      return NextResponse.json({
+        error: 'Insufficient credits',
+        details: 'Your Runway balance is too low to run this task. Please top up credits and try again.'
+      }, { status: 402 })
+    }
     return NextResponse.json({
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -190,6 +197,10 @@ async function generateWithRetries(params: {
       if (!result?.videoUrl) throw new Error('No video URL returned')
       return { videoUrl: result.videoUrl }
     } catch (err) {
+      // Do not retry when credits are insufficient
+      if (err instanceof Error && (err.name === 'InsufficientCreditsError' || err.message === 'INSUFFICIENT_CREDITS')) {
+        throw err
+      }
       lastError = err
       // Small backoff before retry
       await new Promise(r => setTimeout(r, attempt * 2000))

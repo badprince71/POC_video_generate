@@ -44,6 +44,14 @@ interface UploadMovieParams {
   thumbnail?: string
 }
 
+// Detects the specific Runway credit exhaustion error from various error shapes
+function isInsufficientCreditsError(error: unknown): boolean {
+  const anyErr = error as any
+  const message = typeof anyErr?.message === 'string' ? anyErr.message.toLowerCase() : ''
+  const embedded = typeof anyErr?.error === 'string' ? anyErr.error.toLowerCase() : ''
+  return message.includes('enough credits') || embedded.includes('enough credits')
+}
+
 export async function generateVideoPrompt({
   prompt,
   mood = "dynamic",
@@ -159,22 +167,34 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
     }
     console.log("Initializing video generation...");
 
-    // Initialize RunwayML client
+    // Initialize RunwayML client with increased timeout and retries
     const client = new RunwayML({
       apiKey: process.env.RUNWAYML_API_SECRET,
+      timeout: 180000, // 3 minutes per request
+      maxRetries: 3,
     });
 
     const duration = 5;
+    const gen4Ratios = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672"] as const;
+    const gen3Ratios = ["1280:768", "768:1280"] as const;
+    const selectedModel = (gen3Ratios as readonly string[]).includes(frameAspectRatio)
+      ? 'gen3a_turbo'
+      : 'gen4_turbo';
     // Create the video generation task
     // Prefer passing a URL rather than a large data URL to reduce request size/timeouts
-    const imageToVideo = await client.imageToVideo.create({
-      model: 'gen4_turbo',
-      promptImage: startImage,
-      ratio: frameAspectRatio as "1280:720" | "720:1280" | "1104:832" | "832:1104" | "960:960" | "1584:672" | "1280:768" | "768:1280",
-      promptText: generatePrompt,
-      duration: duration as 5 | 10,
-      // Explicit timeout bump at SDK layer if supported in future; currently SDK handles internally
-    })
+    const imageToVideo = await client.imageToVideo.create(
+      {
+        model: selectedModel,
+        promptImage: startImage,
+        ratio: frameAspectRatio as "1280:720" | "720:1280" | "1104:832" | "832:1104" | "960:960" | "1584:672" | "1280:768" | "768:1280",
+        promptText: generatePrompt,
+        duration: duration as 5 | 10,
+      },
+      {
+        timeout: 180000, // 3 minutes for the create call
+        maxRetries: 3,
+      }
+    )
     
     if (!imageToVideo.id) {
       throw new Error("Failed to generate video")
@@ -212,6 +232,11 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
 
   } catch (error) {
     console.error("Error generating video:", error);
+    if (isInsufficientCreditsError(error)) {
+      const insufficient = new Error('INSUFFICIENT_CREDITS')
+      ;(insufficient as any).name = 'InsufficientCreditsError'
+      throw insufficient
+    }
     throw new Error(error instanceof Error ? error.message : "Failed to generate video");
   }
 }

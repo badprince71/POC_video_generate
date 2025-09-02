@@ -1,3 +1,103 @@
+# AI Frame-to-Video Generator
+
+Modern Next.js app to generate story-driven frames from a single image + prompt, convert frames into per-frame 5-second clips via RunwayML Gen-4, and merge them client-side. Includes S3 storage support and resumable uploads.
+
+## Features
+
+- Frame generation with style/mood prompts using OpenAI Images API
+- Configurable frame aspect ratio at generation time (no cropping or distortion)
+- Per-frame regeneration and per-clip regeneration
+- Video clip generation (RunwayML Gen-4) with selectable aspect ratios
+- Client-side merge with aspect-fit rendering to avoid text distortion
+- S3 upload for frames, clips, final videos (chunked uploads for large files)
+
+## Prerequisites
+
+- Node.js 18+
+- Next.js 14+ (App Router)
+- Accounts/keys:
+  - OpenAI API key (for prompts and images)
+  - RunwayML API key (for video generation)
+  - Supabase (or S3-compatible) storage credentials
+
+## Environment Variables
+
+Create a `.env.local` with:
+
+```
+OPENAI_API_KEY=sk-...
+RUNWAYML_API_SECRET=...
+NEXT_PUBLIC_API_KEY=your_public_frontend_api_key
+
+# Supabase storage (bucket `videomaker` used by default)
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+
+# Base URL for reconstructing chunked files
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+```
+
+Ensure your storage bucket `videomaker` exists with public access to objects created by the app.
+
+## Install & Run
+
+```
+npm install
+npm run dev
+```
+
+Visit `http://localhost:3000`.
+
+## Key Workflows
+
+### 1) Frame Generation
+
+- Go to Frame Generation page.
+- Upload a reference image and enter a prompt, style, mood.
+- Select Frame Aspect Ratio (defaults to `1280:720`).
+- Generate frames; each saved to storage and database.
+
+Technical:
+- API: `app/api/generate_single_image/route.ts`
+- Added `frameAspectRatio` support. The API pads the generated image to the requested ratio using sharp with `fit: 'contain'` (no cropping) and transparent letterboxing.
+
+### 2) Per-Frame Regeneration
+
+- After frames are ready, select a frame and click “Regenerate Selected Frame”. Only that frame is regenerated and updated in-place.
+
+### 3) Clip Generation
+
+- Go to Video Generation page.
+- Choose desired video aspect ratio (same presets as RunwayML) and generate clips.
+- Each clip is uploaded to storage automatically.
+
+Technical:
+- `lib/generate_video_clips/generate_clips.ts` passes `ratio` to Runway.
+- `app/api/generate_single_video_clip/route.ts` normalizes prompt image aspect and retries generation.
+
+### 4) Merging Clips (Client-Side)
+
+- Use the Merge action to concatenate clips in-browser.
+- The merger draws each frame with aspect-fit and letterboxing to avoid stretch or text distortion.
+
+Technical:
+- `lib/utils/video-merge.ts` uses Canvas + MediaRecorder; draws background then aspect-fit video.
+
+## Troubleshooting
+
+- If one clip fails: Use Retry Clip on that item; no need to restart the whole batch.
+- If a frame’s text is misaligned: Regenerate that single frame from the Frame Generation page.
+- If CORS on S3: the app proxies S3 URLs; ensure the proxy API routes are enabled.
+
+## Security
+
+- Server routes protect with `withApiKeyAuth` and time-limited signed URLs. Set `NEXT_PUBLIC_API_KEY` and keep server keys in server-only env vars.
+
+## Notes
+
+- Supported aspect ratios align with RunwayML presets. Frame-level padding ensures consistency from the start, avoiding truncation when converting frames to clips.
+
 # AI Video Generator
 
 A Next.js application that generates personalized animated videos from user prompts and images using AI.

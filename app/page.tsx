@@ -95,6 +95,13 @@ export default function FrameGenerationPage() {
   const [storyGenerationStep, setStoryGenerationStep] = useState<'idle' | 'first-story' | 'enhancing' | 'complete'>('idle')
   const [storyGenerationProgress, setStoryGenerationProgress] = useState(0)
   const [isEditingStory, setIsEditingStory] = useState(false)
+  const [frameAspectRatio, setFrameAspectRatio] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('frameAspectRatio') || '1280:720'
+    }
+    return '1280:720'
+  })
+  const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"]
 
   // Get authenticated user ID
   const userId = user?.id || user?.email || 'anonymous'
@@ -444,7 +451,8 @@ export default function FrameGenerationPage() {
             totalFrames: frameCount,
             isFirstFrame: i === 0,
             style: selectedStyle,
-            mood: selectedMood
+            mood: selectedMood,
+            frameAspectRatio
           }),
         })
         .then((res) => res.json())
@@ -573,6 +581,45 @@ export default function FrameGenerationPage() {
         showToast.error(`Error generating frames: ${error instanceof Error ? error.message : 'Unknown error'}`)
         setCurrentStep("input")
       }
+    }
+  }
+
+  const regenerateFrame = async (index: number) => {
+    try {
+      if (!imagePreview || !generatedStory) return
+      const inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "")
+      const baseFramePrompt = generatedStory && generatedStory.framePrompts 
+        ? generatedStory.framePrompts[index]?.prompt || prompt
+        : prompt
+      const framePrompt = createEnhancedPrompt(baseFramePrompt, selectedStyle, selectedMood)
+
+      const res = await fetch("/api/generate_single_image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({
+          image: inputImage,
+          prompt: framePrompt,
+          frameIndex: index,
+          totalFrames: frameCount,
+          isFirstFrame: index === 0,
+          style: selectedStyle,
+          mood: selectedMood,
+          frameAspectRatio
+        })
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.imageUrl) throw new Error(data?.error || 'Failed to regenerate frame')
+
+      const updated = [...generatedFrames]
+      updated[index] = {
+        ...updated[index],
+        imageUrl: convertS3UrlToProxy(data.imageUrl)
+      }
+      setGeneratedFrames(updated)
+      showToast.success(`Frame ${index + 1} regenerated`)
+    } catch (e) {
+      console.error('Regenerate frame error', e)
+      showToast.error(e instanceof Error ? e.message : 'Failed to regenerate frame')
     }
   }
 
@@ -1017,6 +1064,25 @@ export default function FrameGenerationPage() {
                         {frameCount} frames ({videoDuration / frameCount}s per frame)
                       </div>
                     </div>
+                    <div>
+                      <Label htmlFor="frame-ar-select" className="flex items-center gap-2 text-gray-900 font-medium mb-3 block" style={{display: "flex"}}>
+                        Frame Aspect Ratio
+                      </Label>
+                      <select
+                        id="frame-ar-select"
+                        value={frameAspectRatio}
+                        onChange={(e) => {
+                          setFrameAspectRatio(e.target.value)
+                          try { localStorage.setItem('frameAspectRatio', e.target.value) } catch {}
+                        }}
+                        className="input-modern w-full"
+                        disabled={currentStep === "generating-frames"}
+                      >
+                        {frameOptions.map((ratio) => (
+                          <option key={ratio} value={ratio}>{ratio}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   
                   {/* Enhanced Prompt Preview */}
@@ -1361,6 +1427,14 @@ export default function FrameGenerationPage() {
                 ) : currentStep === "frames-ready" ? (
                   <div className="space-y-6">
                     <FrameViewer frames={generatedFrames} />
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => regenerateFrame(selectedFrameIndex)}
+                      >
+                        Regenerate Selected Frame
+                      </Button>
+                    </div>
                     <div className="flex flex-col sm:flex-row gap-4">
                       <div className="flex gap-3">
                       </div>
