@@ -209,9 +209,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`Uploaded ${uploadedCount}/${frames?.length ?? 0} frames to S3 path: ${targetFolderPath}`)
 
-    // Save session metadata to database
+    // Save or update session metadata to database (idempotent per sessionId)
     console.log('Attempting to save session to database...')
-    const { data: sessionData, error: sessionError } = await supabase
+    let { data: sessionData, error: sessionError } = await supabase
       .from('video_sessions')
       .insert({
         session_id: sessionId,
@@ -222,13 +222,35 @@ export async function POST(request: NextRequest) {
         style: style,
         mood: mood,
         status: 'frames_generated',
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single()
 
+    if (sessionError && sessionError.code === '23505') {
+      // Duplicate key: update existing session instead of failing
+      console.warn('Session already exists, updating instead of inserting')
+      const updateResult = await supabase
+        .from('video_sessions')
+        .update({
+          original_prompt: originalPrompt,
+          video_duration: videoDuration,
+          frame_count: frameCount,
+          style: style,
+          mood: mood,
+          status: 'frames_generated',
+          updated_at: new Date().toISOString()
+        })
+        .eq('session_id', sessionId)
+        .select()
+        .single()
+      sessionError = updateResult.error as any
+      sessionData = updateResult.data as any
+    }
+
     if (sessionError) {
-      console.error('Error saving session:', sessionError)
+      console.error('Error saving/updating session:', sessionError)
       return NextResponse.json({ 
         error: "Failed to save session", 
         details: sessionError.message,
@@ -237,7 +259,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    console.log('Session saved successfully:', sessionData)
+    console.log('Session saved/updated successfully:', sessionData)
 
     // Save individual frames to database
     console.log('Preparing to save frames...')
@@ -257,6 +279,12 @@ export async function POST(request: NextRequest) {
     }))
 
     console.log('Attempting to save frames to database...')
+    // Remove any prior frames for this session to avoid duplicates
+    try {
+      await supabase.from('video_frames').delete().eq('session_id', sessionId)
+    } catch (e) {
+      console.warn('Failed to clear existing frames for session; continuing to insert new frames', e)
+    }
     const { data: framesData, error: framesError } = await supabase
       .from('video_frames')
       .insert(framesToInsert)

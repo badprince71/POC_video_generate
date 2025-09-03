@@ -4,7 +4,7 @@ import type React from "react"
 import Image from "next/image"
 import Link from "next/link"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
@@ -102,6 +102,8 @@ export default function FrameGenerationPage() {
     return '1280:720'
   })
   const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"]
+  const [editedSceneDescriptions, setEditedSceneDescriptions] = useState<Record<number, string>>({})
+  const [isEditingFrameScene, setIsEditingFrameScene] = useState(false)
 
   // Get authenticated user ID
   const userId = user?.id || user?.email || 'anonymous'
@@ -586,25 +588,56 @@ export default function FrameGenerationPage() {
 
   const regenerateFrame = async (index: number) => {
     try {
-      if (!imagePreview || !generatedStory) return
-      const inputImage = imagePreview.replace(/^data:image\/\w+;base64,/, "")
-      const baseFramePrompt = generatedStory && generatedStory.framePrompts 
+      if (!generatedStory) {
+        showToast.error('Story not loaded. Regenerate story first.')
+        return
+      }
+
+      // Determine source image: prefer original upload; fallback to selected frame image
+      let sourceBase64 = ''
+      if (imagePreview) {
+        sourceBase64 = imagePreview.replace(/^data:image\/\w+;base64,/, "")
+      } else {
+        const srcUrl = generatedFrames[index]?.imageUrl
+        if (!srcUrl) {
+          showToast.error('No source image available for this frame')
+          return
+        }
+        // Fetch selected frame and convert to base64
+        const res = await fetch(srcUrl)
+        if (!res.ok) throw new Error('Failed to fetch frame image')
+        const blob = await res.blob()
+        const dataUrl: string = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        })
+        sourceBase64 = (dataUrl || '').replace(/^data:image\/\w+;base64,/, '')
+      }
+
+      const storyBaseFromGenerated = generatedStory && generatedStory.framePrompts 
         ? generatedStory.framePrompts[index]?.prompt || prompt
         : prompt
+      const editedScene = (editedSceneDescriptions[index] ?? '').trim()
+      const baseFramePrompt = editedScene.length > 0 ? editedScene : storyBaseFromGenerated
       const framePrompt = createEnhancedPrompt(baseFramePrompt, selectedStyle, selectedMood)
 
       const res = await fetch("/api/generate_single_image", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
-          image: inputImage,
+          image: sourceBase64,
           prompt: framePrompt,
           frameIndex: index,
           totalFrames: frameCount,
           isFirstFrame: index === 0,
           style: selectedStyle,
           mood: selectedMood,
-          frameAspectRatio
+          frameAspectRatio,
+          // Persist to same session if available
+          userId: (() => { try { return JSON.parse(localStorage.getItem('currentSession') || '{}').userId } catch { return undefined } })(),
+          requestId: (() => { try { return JSON.parse(localStorage.getItem('currentSession') || '{}').sessionId } catch { return undefined } })()
         })
       })
       const data = await res.json()
@@ -613,15 +646,61 @@ export default function FrameGenerationPage() {
       const updated = [...generatedFrames]
       updated[index] = {
         ...updated[index],
-        imageUrl: convertS3UrlToProxy(data.imageUrl)
+        imageUrl: convertS3UrlToProxy(data.imageUrl),
+        prompt: framePrompt,
+        sceneStory: baseFramePrompt,
+        description: baseFramePrompt || updated[index].description
       }
       setGeneratedFrames(updated)
+
+      // Persist edited scene text into the story if available
+      try {
+        if (generatedStory && generatedStory.enhancedStory && generatedStory.enhancedStory.scenes?.[index]) {
+          const scenes = [...generatedStory.enhancedStory.scenes]
+          if (baseFramePrompt) {
+            scenes[index] = { ...scenes[index], description: baseFramePrompt }
+            setGeneratedStory({
+              ...generatedStory,
+              enhancedStory: { ...generatedStory.enhancedStory, scenes }
+            })
+          }
+        }
+      } catch {}
+
+      // Update DB with the new frame URL using the existing session
+      try {
+        const session = JSON.parse(localStorage.getItem('currentSession') || '{}')
+        if (session?.sessionId && session?.userId) {
+          // Save to DB to ensure video-generation page fetches the latest regenerated frames
+          await saveFramesToDatabase(updated, session.sessionId)
+          // Refresh the localStorage session frameCount if needed
+          try {
+            localStorage.setItem('currentSession', JSON.stringify({ ...session, frameCount: updated.length }))
+          } catch {}
+        }
+      } catch {}
+
       showToast.success(`Frame ${index + 1} regenerated`)
     } catch (e) {
       console.error('Regenerate frame error', e)
       showToast.error(e instanceof Error ? e.message : 'Failed to regenerate frame')
     }
   }
+
+  // Pre-fill editable scene breakdown when switching selected frame
+  useEffect(() => {
+    try {
+      if (editedSceneDescriptions[selectedFrameIndex] === undefined) {
+        const fromStory = generatedStory?.enhancedStory?.scenes?.[selectedFrameIndex]?.description
+        const fallback = generatedFrames[selectedFrameIndex]?.sceneStory || generatedFrames[selectedFrameIndex]?.description || ''
+        if (fromStory || fallback) {
+          setEditedSceneDescriptions(prev => ({ ...prev, [selectedFrameIndex]: fromStory || fallback }))
+        }
+      }
+      // Exit edit mode when switching frames
+      setIsEditingFrameScene(false)
+    } catch {}
+  }, [selectedFrameIndex, generatedStory, generatedFrames])
 
   const stopGeneration = () => {
     setIsGenerationStopped(true)
@@ -860,7 +939,48 @@ export default function FrameGenerationPage() {
             <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-300">{frames[selectedFrameIndex]?.timestamp}</Badge>
             <span className="text-sm text-gray-500">Frame {selectedFrameIndex + 1}</span>
           </div>
-          <p className="text-sm text-gray-700 leading-relaxed">{frames[selectedFrameIndex]?.description}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <p className="text-sm text-gray-700 leading-relaxed flex-1">
+              {isEditingFrameScene ? '' : (frames[selectedFrameIndex]?.sceneStory || frames[selectedFrameIndex]?.description)}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditingFrameScene(v => !v)}
+            >
+              {isEditingFrameScene ? 'Done' : 'Edit'}
+            </Button>
+          </div>
+
+          {/* Editable per-frame Scene breakdown */}
+          {isEditingFrameScene && (
+            <div className="mt-3">
+              <Label className="text-xs text-gray-600">Scene breakdown for this frame</Label>
+              <textarea
+                value={editedSceneDescriptions[selectedFrameIndex] ?? ''}
+                onChange={(e) => setEditedSceneDescriptions(prev => ({ ...prev, [selectedFrameIndex]: e.target.value }))}
+                placeholder="Describe exactly what this frame should show"
+                className="w-full mt-1 p-2 border rounded text-sm"
+                rows={3}
+              />
+              <div className="mt-2 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditedSceneDescriptions(prev => ({ ...prev, [selectedFrameIndex]: '' }))}
+                >
+                  Clear Scene
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => regenerateFrame(selectedFrameIndex)}
+                  disabled={(editedSceneDescriptions[selectedFrameIndex] ?? '').trim().length === 0}
+                >
+                  Regenerate Selected Frame
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Frame Thumbnails */}

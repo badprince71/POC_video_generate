@@ -228,8 +228,8 @@ export default function VideoGenerationPage() {
           return
         }
 
-        const { sessionId, userId } = sessionData
-        console.log(`Extracted sessionId: ${sessionId}, userId: ${userId}`)
+        const { sessionId, userId: sessionUserId } = sessionData
+        console.log(`Extracted sessionId: ${sessionId}, userId: ${sessionUserId}`)
 
         if (!sessionId || !userId) {
           console.error('Incomplete session data:', sessionData)
@@ -238,8 +238,8 @@ export default function VideoGenerationPage() {
         }
 
         // Fetch frames from database with better error handling  
-        console.log(`Fetching frames for sessionId: ${sessionId}, userId: ${userId}`)
-        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=user`, { headers: { ...getAuthHeaders() } })
+        console.log(`Fetching frames for sessionId: ${sessionId}, userId: ${sessionUserId}`)
+        const response = await fetch(`/api/get_frames?sessionId=${sessionId}&userId=${encodeURIComponent(sessionUserId)}` , { headers: { ...getAuthHeaders() } })
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
@@ -289,8 +289,8 @@ export default function VideoGenerationPage() {
 
             // First, try to find any recent sessions for this user
             try {
-              console.log('Attempting to find recent sessions for user:', userId)
-              const recentSessionsResponse = await fetch(`/api/get_recent_sessions?userId=${userId}`, { headers: { ...getAuthHeaders() } })
+              console.log('Attempting to find recent sessions for user:', sessionUserId)
+              const recentSessionsResponse = await fetch(`/api/get_recent_sessions?userId=${encodeURIComponent(sessionUserId)}`, { headers: { ...getAuthHeaders() } })
               if (recentSessionsResponse.ok) {
                 const recentSessions = await recentSessionsResponse.json()
                 console.log('Recent sessions found:', recentSessions)
@@ -300,7 +300,7 @@ export default function VideoGenerationPage() {
                   const mostRecentSession = recentSessions.sessions[0]
                   console.log('Trying most recent session:', mostRecentSession.session_id)
 
-                  const recentFramesResponse = await fetch(`/api/get_frames?sessionId=${mostRecentSession.session_id}&userId=user`, { headers: { ...getAuthHeaders() } })
+                  const recentFramesResponse = await fetch(`/api/get_frames?sessionId=${mostRecentSession.session_id}&userId=${encodeURIComponent(sessionUserId)}`, { headers: { ...getAuthHeaders() } })
                   if (recentFramesResponse.ok) {
                     const recentFramesResult = await recentFramesResponse.json()
                     if (recentFramesResult.frames && recentFramesResult.frames.length > 0) {
