@@ -23,6 +23,7 @@ import {
   Heart,
   Home,
   FileImage,
+  Loader2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
@@ -104,6 +105,8 @@ export default function FrameGenerationPage() {
   const frameOptions = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"]
   const [editedSceneDescriptions, setEditedSceneDescriptions] = useState<Record<number, string>>({})
   const [isEditingFrameScene, setIsEditingFrameScene] = useState(false)
+  const [isRegeneratingFrame, setIsRegeneratingFrame] = useState(false)
+  const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null)
 
   // Get authenticated user ID
   const userId = user?.id || user?.email || 'anonymous'
@@ -588,6 +591,8 @@ export default function FrameGenerationPage() {
 
   const regenerateFrame = async (index: number) => {
     try {
+      setIsRegeneratingFrame(true)
+      setRegeneratingIndex(index)
       if (!generatedStory) {
         showToast.error('Story not loaded. Regenerate story first.')
         return
@@ -684,6 +689,10 @@ export default function FrameGenerationPage() {
     } catch (e) {
       console.error('Regenerate frame error', e)
       showToast.error(e instanceof Error ? e.message : 'Failed to regenerate frame')
+    }
+    finally {
+      setIsRegeneratingFrame(false)
+      setRegeneratingIndex(null)
     }
   }
 
@@ -974,9 +983,16 @@ export default function FrameGenerationPage() {
                 <Button
                   size="sm"
                   onClick={() => regenerateFrame(selectedFrameIndex)}
-                  disabled={(editedSceneDescriptions[selectedFrameIndex] ?? '').trim().length === 0}
+                  disabled={isRegeneratingFrame || (editedSceneDescriptions[selectedFrameIndex] ?? '').trim().length === 0}
                 >
-                  Regenerate Selected Frame
+                  {isRegeneratingFrame && regeneratingIndex === selectedFrameIndex ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating frame...
+                    </>
+                  ) : (
+                    'Regenerate Selected Frame'
+                  )}
                 </Button>
               </div>
             </div>
@@ -1547,14 +1563,14 @@ export default function FrameGenerationPage() {
                 ) : currentStep === "frames-ready" ? (
                   <div className="space-y-6">
                     <FrameViewer frames={generatedFrames} />
-                    <div className="flex gap-3">
+                    {/* <div className="flex gap-3">
                       <Button
                         variant="outline"
                         onClick={() => regenerateFrame(selectedFrameIndex)}
                       >
                         Regenerate Selected Frame
                       </Button>
-                    </div>
+                    </div> */}
                     <div className="flex flex-col sm:flex-row gap-4">
                       <div className="flex gap-3">
                       </div>
