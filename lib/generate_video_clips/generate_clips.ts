@@ -2,6 +2,7 @@
 
 import { supabase } from '@/utils/supabase'
 import RunwayML from '@runwayml/sdk'
+import { normalizeAspectRatio } from '@/lib/utils/aspect'
 
 interface GenerateVideoClipParams {
   startImage: string  // Base64 or URL of the first image
@@ -150,13 +151,14 @@ console.log("systemPrompt", systemPrompt)
 
 export async function generateVideoClip({ startImage, prompt, clipIndex, totalClips, frameAspectRatio}: GenerateVideoClipParams) {
   
-  // Validate that frameAspectRatio is one of the supported Runway ratios
+  // Normalize and validate aspect ratio
+  const normalizedRatio = normalizeAspectRatio(frameAspectRatio)
   const validRatios = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "1280:768", "768:1280"] as const;
-  if (!validRatios.includes(frameAspectRatio as any)) {
+  if (!validRatios.includes(normalizedRatio as any)) {
     throw new Error(`Invalid aspect ratio "${frameAspectRatio}". Must be one of: ${validRatios.join(", ")}`);
   }
 
-  let generatePrompt = prompt;
+  let generatePrompt = buildSafePrompt(prompt);
   if (!process.env.RUNWAYML_API_SECRET) {
     throw new Error("Runway API key is not configured")
   }
@@ -177,7 +179,7 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
     const duration = 5;
     const gen4Ratios = ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672"] as const;
     const gen3Ratios = ["1280:768", "768:1280"] as const;
-    const selectedModel = (gen3Ratios as readonly string[]).includes(frameAspectRatio)
+    const selectedModel = (gen3Ratios as readonly string[]).includes(normalizedRatio)
       ? 'gen3a_turbo'
       : 'gen4_turbo';
     // Create the video generation task
@@ -186,7 +188,7 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
       {
         model: selectedModel,
         promptImage: startImage,
-        ratio: frameAspectRatio as "1280:720" | "720:1280" | "1104:832" | "832:1104" | "960:960" | "1584:672" | "1280:768" | "768:1280",
+        ratio: normalizedRatio as "1280:720" | "720:1280" | "1104:832" | "832:1104" | "960:960" | "1584:672" | "1280:768" | "768:1280",
         promptText: generatePrompt,
         duration: duration as 5 | 10,
       },
@@ -239,6 +241,18 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
     }
     throw new Error(error instanceof Error ? error.message : "Failed to generate video");
   }
+}
+
+function buildSafePrompt(input: string): string {
+  const preface = [
+    'Animate the given image faithfully with subtle, natural motion.',
+    'Do not change the subject identity, clothing, background, or lighting conditions.',
+    'Avoid adding new objects, text, or elements not present in the image.',
+    'Keep movements smooth and minimal: gentle camera drift, minor environmental motion.',
+    'Preserve composition and style; emphasize temporal consistency and realism.',
+  ].join(' ')
+  const combined = `${preface} ${input}`.trim()
+  return combined.length > 1000 ? combined.substring(0, 997) + '...' : combined
 }
 
 async function uploadChunkWithRetry(

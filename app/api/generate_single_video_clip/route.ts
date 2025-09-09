@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSignedUrlFromS3, uploadVideoToS3, sanitizeFilename, uploadImageToS3 } from '@/lib/upload/s3_upload'
 import { generateVideoClip } from '@/lib/generate_video_clips/generate_clips'
 import sharp from 'sharp'
+import { normalizeAspectRatio } from '@/lib/utils/aspect'
 import { withApiKeyAuth } from '../../../lib/auth/api-key-auth'
 
 export const runtime = 'nodejs'
@@ -118,13 +119,13 @@ async function generateSingleVideoClip(request: NextRequest) {
       }
     }
 
-    // Generate video clip using Runway with internal retry to reduce upstream timeouts
+    // Normalize aspect ratio and generate video clip using Runway with internal retry to reduce upstream timeouts
     const clip = await generateWithRetries({
       startImage: runwayStartImage,
       prompt,
       clipIndex,
       totalClips,
-      frameAspectRatio
+      frameAspectRatio: normalizeAspectRatio(frameAspectRatio)
     })
 
     if (!clip?.videoUrl) {

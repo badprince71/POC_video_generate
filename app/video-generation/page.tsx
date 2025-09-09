@@ -662,7 +662,8 @@ export default function VideoGenerationPage() {
       const userId = 'user' // Fixed userId for video clips
 
       const response = await fetch(`/api/delete_media?key=${encodeURIComponent(clip.key)}&userId=${userId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { ...getAuthHeaders() }
       })
 
       const result = await response.json()

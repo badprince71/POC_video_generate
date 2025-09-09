@@ -1,4 +1,5 @@
 import { listUserFramesFromS3 } from '@/lib/upload/s3_upload'
+import { normalizeAspectRatio } from '@/lib/utils/aspect'
 import { generateVideoClip, uploadVideo, uploadMovieToStorage } from '@/lib/generate_video_clips/generate_clips'
 
 // Types
@@ -178,12 +179,13 @@ export class S3VideoGenerationService {
         console.log(`📦 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} frames)`)
 
         // Process batch with retry logic
+        const normalizedRatio = normalizeAspectRatio(frameAspectRatio)
         await this.processBatchWithRetries(
           batch, 
           batchIndex * batchSize, 
           videoClips, 
           progress, 
-          { frameAspectRatio, prompt, userId, maxRetries }
+          { frameAspectRatio: normalizedRatio, prompt, userId, maxRetries }
         )
 
         // Add delay between batches to respect API rate limits

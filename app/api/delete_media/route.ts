@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { deleteMediaFile } from '@/lib/services/s3-media-service'
+import { withApiKeyAuth } from '@/lib/auth/api-key-auth'
 
-export async function DELETE(request: NextRequest) {
+async function handleDelete(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const key = searchParams.get('key')
@@ -43,8 +44,10 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
+export const DELETE = withApiKeyAuth(handleDelete)
+
 // Also support POST method for compatibility
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   try {
     const body = await request.json()
     const { key, userId } = body
@@ -84,3 +87,5 @@ export async function POST(request: NextRequest) {
     }, { status: 500 })
   }
 }
+
+export const POST = withApiKeyAuth(handlePost)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadImageToS3 } from '@/lib/upload/s3_upload'
 import { generateVideosFromS3Frames } from '@/lib/services/s3-video-generation'
+import { normalizeAspectRatio } from '@/lib/utils/aspect'
 
 async function generateVideoHandler(request: NextRequest) {
   try {
@@ -103,7 +104,7 @@ async function generateVideoHandler(request: NextRequest) {
       userId: s3UserId,
       sessionId: finalRequestId,
       prompt,
-      frameAspectRatio: '16:9'
+      frameAspectRatio: normalizeAspectRatio('16:9')
     })
 
     if (!videoResult.success) {

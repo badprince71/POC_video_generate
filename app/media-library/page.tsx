@@ -196,7 +196,8 @@ export default function MediaLibraryPage() {
       setLoading(true)
 
     const response = await fetch(`/api/delete_media?key=${encodeURIComponent(item.key)}&userId=${userId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { ...getAuthHeaders() }
       })
 
       const result = await response.json()
