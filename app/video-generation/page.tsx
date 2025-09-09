@@ -739,13 +739,17 @@ Style: ${fullStory.style}
 Mood: ${fullStory.mood}` :
             `Create a smooth 5-second video transition from the start image to the end image. Maintain consistent character appearance and smooth motion between frames.`
 
+          // Build continuity-aware prompt by referencing previous scene/frame if available
+          const previousFrame = i > 0 ? generatedFrames[clips[i - 1].startFrame] : undefined
+          const previousSceneContext = previousFrame?.sceneStory || previousFrame?.description || ''
+          const continuityInstruction = previousFrame ? `\nCONTINUITY: This clip must start exactly where the previous scene left off. Persist characters, environment, time of day, weather, lighting, and camera style. Seamlessly continue from: "${previousSceneContext}"` : ''
 
           const apiRes = await fetch('/api/generate_single_video_clip', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({
               startImage: frameImageData,
-              prompt: `${sceneStory} ${systemPrompt}`,
+              prompt: `${sceneStory} ${systemPrompt}${continuityInstruction}`,
               clipIndex: i,
               totalClips: clips.length,
               frameAspectRatio: frameAspectRatio,

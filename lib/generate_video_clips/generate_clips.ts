@@ -245,11 +245,12 @@ export async function generateVideoClip({ startImage, prompt, clipIndex, totalCl
 
 function buildSafePrompt(input: string): string {
   const preface = [
-    'Animate the given image faithfully with subtle, natural motion.',
-    'Do not change the subject identity, clothing, background, or lighting conditions.',
-    'Avoid adding new objects, text, or elements not present in the image.',
-    'Keep movements smooth and minimal: gentle camera drift, minor environmental motion.',
-    'Preserve composition and style; emphasize temporal consistency and realism.',
+    'Animate the given image with natural, cinematic motion.',
+    'Maintain subject identity and core composition while allowing visual enhancements.',
+    'Apply textures, materials, and visual details as described in the prompt.',
+    'Keep movements smooth and realistic: gentle camera movements, natural environmental motion.',
+    'Enhance lighting, colors, and surface textures to match the prompt description.',
+    'Preserve character consistency while allowing atmospheric and textural improvements.',
   ].join(' ')
   const combined = `${preface} ${input}`.trim()
   return combined.length > 1000 ? combined.substring(0, 997) + '...' : combined

@@ -109,6 +109,7 @@ FACIAL CONSISTENCY: Maintain subject's EXACT facial features from the reference 
 COMPOSITION: Rule of thirds, professional framing, environmental context
 QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
 SCENE: The subject of the images is the person in the photo. ${prompt}
+CHARACTER CONSISTENCY: Keep the same apparent age, facial features, hair, and clothing style/color palette across all frames. Do not introduce new garments or accessories unless explicitly requested.
 IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
                 } else {
                     // Subsequent frames: continue the action from previous frame
@@ -119,6 +120,7 @@ FACIAL CONSISTENCY: Maintain subject's EXACT facial features from previous image
 COMPOSITION: Rule of thirds, professional framing, environmental context
 QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
 SCENE: Continue the action from the previous image. ${prompt}
+CHARACTER CONSISTENCY: Keep the same apparent age, facial features, hair, and clothing style/color palette as in the first frame. Do not introduce new garments or accessories unless explicitly requested.
 IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
                 }
                 
