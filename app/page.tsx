@@ -336,24 +336,16 @@ export default function FrameGenerationPage() {
     try {
       const enhancedPrompt = createEnhancedPrompt(prompt, selectedStyle, selectedMood)
       
-      // Start progress bar animation (1 minute to reach 98%)
-      const startTime = Date.now()
-      const duration = 60000 // 1 minute in milliseconds
-      const targetProgress = 98
-      
-      const progressInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime
-        const progress = Math.min((elapsed / duration) * targetProgress, targetProgress)
-        setStoryGenerationProgress(progress)
-        
-        if (progress >= targetProgress) {
-          clearInterval(progressInterval)
-        }
-      }, 100) // Update every 100ms for smooth animation
+      // Set initial progress for story generation start
+      setStoryGenerationProgress(10)
       
       // Step 1: First story generation
       setStoryGenerationStep('first-story')
       console.log("Starting first story generation...")
+      
+      // Update progress to show API call is in progress
+      setStoryGenerationProgress(25)
+      
       const response = await fetch("/api/generate_story", {
         method: "POST",
         headers: {
@@ -376,13 +368,18 @@ export default function FrameGenerationPage() {
       if (response.error) {
         console.error("Story API Error:", response.error)
         showToast.error(`Story generation failed: ${response.error}`)
-        clearInterval(progressInterval)
         return
       }
+
+      // Update progress after successful API response
+      setStoryGenerationProgress(75)
 
       // Step 2: Story enhancement (this happens in the API)
       setStoryGenerationStep('enhancing')
       console.log("Story enhancement in progress...")
+      
+      // Update progress for processing response
+      setStoryGenerationProgress(90)
 
       setGeneratedStory(response)
       setStoryGenerationStep('complete')
