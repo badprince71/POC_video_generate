@@ -356,20 +356,20 @@ export default function FrameGenerationPage() {
     try {
       const enhancedPrompt = createEnhancedPrompt(prompt, selectedStyle, selectedMood)
       
-      // Gradually increase progress to show story generation start
-      animateProgressTo(10, 500)
-      await new Promise(resolve => setTimeout(resolve, 300))
+      // Gradually increase progress to show story generation start (slower)
+      animateProgressTo(5, 1500)
+      await new Promise(resolve => setTimeout(resolve, 800))
       
       // Step 1: First story generation
       setStoryGenerationStep('first-story')
       console.log("Starting first story generation...")
       
-      // Gradually increase progress to show API call is in progress
-      animateProgressTo(25, 800)
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Gradually increase progress to show API call is in progress (slower)
+      animateProgressTo(15, 2000)
+      await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // Continue gradual progress during API call
-      animateProgressTo(60, 2000)
+      // Continue gradual progress during API call (much slower)
+      animateProgressTo(45, 4000)
       
       const response = await fetch("/api/generate_story", {
         method: "POST",
@@ -396,23 +396,23 @@ export default function FrameGenerationPage() {
         return
       }
 
-      // Gradually increase progress after successful API response
-      animateProgressTo(80, 800)
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Gradually increase progress after successful API response (slower)
+      animateProgressTo(65, 2000)
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       // Step 2: Story enhancement (this happens in the API)
       setStoryGenerationStep('enhancing')
       console.log("Story enhancement in progress...")
       
-      // Gradually increase progress for processing response
-      animateProgressTo(95, 800)
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Gradually increase progress for processing response (slower)
+      animateProgressTo(85, 2500)
+      await new Promise(resolve => setTimeout(resolve, 1200))
 
       setGeneratedStory(response)
       setStoryGenerationStep('complete')
       
-      // Final progress animation to 100%
-      animateProgressTo(100, 500)
+      // Final progress animation to 100% (slower)
+      animateProgressTo(100, 1500)
       console.log("Generated story:", response)
       showToast.success('Story generated successfully!')
       
