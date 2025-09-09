@@ -152,11 +152,15 @@ export async function POST(request: NextRequest) {
         const contentType = request.headers.get('content-type') || ''
         let prompt: string | undefined
         let frameCount: number | undefined
+        let style: string | undefined
+        let mood: string | undefined
 
         if (contentType.includes('multipart/form-data')) {
             const form = await request.formData()
             prompt = (form.get('prompt') as string) || undefined
             const frameCountRaw = form.get('frameCount') as string
+            style = (form.get('style') as string) || undefined
+            mood = (form.get('mood') as string) || undefined
             if (typeof frameCountRaw === 'string' && frameCountRaw.length > 0) {
                 frameCount = Number(frameCountRaw)
             }
@@ -164,6 +168,8 @@ export async function POST(request: NextRequest) {
             const body = await request.json();
             prompt = body.prompt
             frameCount = typeof body.frameCount === 'number' ? body.frameCount : undefined
+            style = body.style
+            mood = body.mood
         }
         frameCount = frameCount ?? 6
         
@@ -175,7 +181,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "OpenAI API key is not set" }, { status: 500 })
         }
 
-        console.log(`Generating story from prompt: "${prompt}" with ${frameCount} frames`);
+        console.log(`Generating story from prompt: "${prompt}" with ${frameCount} frames, style: ${style}, mood: ${mood}`);
 
         // FIRST STORY GENERATION
         console.log("Starting first story generation...");
@@ -186,6 +192,11 @@ export async function POST(request: NextRequest) {
                 {
                     role: "system",
                     content: `You are a master storyteller and cinematic director specializing in creating immersive, detailed visual narratives. Your task is to transform a user prompt into a rich, engaging video story with ${frameCount} distinct scenes (${Math.floor(30/frameCount)} seconds each). The story must be a single, continuous narrative where every scene connects seamlessly to the previous one and foreshadows the next.
+
+**VISUAL STYLE REQUIREMENTS**:
+${style ? `- **Art Style**: All scenes must be created in ${style} style. This affects lighting, composition, color palette, and overall visual treatment.` : ''}
+${mood ? `- **Mood/Atmosphere**: Maintain a ${mood} mood throughout the story. This should influence the emotional tone, lighting choices, and visual atmosphere.` : ''}
+${style && mood ? `- **Style Integration**: Seamlessly blend the ${style} visual style with the ${mood} emotional atmosphere in every scene description.` : ''}
 
 CRITICAL SAFETY REQUIREMENTS:
 1. **CONTENT SAFETY**: Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.
@@ -357,6 +368,11 @@ The story should have a complete narrative arc with setup, development, climax, 
                 {
                     "role": "system",
                     "content": `You are a cinematic director and master storyteller specializing in creating detailed, immersive visual narratives. Your task is to transform the user's prompt into an engaging video story with ${frameCount} distinct scenes, each lasting approximately ${Math.floor(30 / frameCount)} seconds. The story must be a single, continuous narrative where each scene connects seamlessly to the previous and foreshadows the next.
+
+**VISUAL STYLE REQUIREMENTS**:
+${style ? `- **Art Style**: All enhanced scenes must be created in ${style} style. This affects lighting, composition, color palette, and overall visual treatment.` : ''}
+${mood ? `- **Mood/Atmosphere**: Maintain a ${mood} mood throughout the enhanced story. This should influence the emotional tone, lighting choices, and visual atmosphere.` : ''}
+${style && mood ? `- **Style Integration**: Seamlessly blend the ${style} visual style with the ${mood} emotional atmosphere in every enhanced scene description.` : ''}
                   
                     **CRITICAL SAFETY REQUIREMENTS**:
                     - **Only generate family-friendly, appropriate content**. Avoid anything harmful, violent, or offensive.
@@ -547,14 +563,14 @@ Original Prompt Connection: ${originalPromptConnection}
                 timeframe: scene.timeframe,
                 prompt: `${fullStoryContext}
 
-STYLE: High-quality, ultra-realistic photograph, cinematic composition
-TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
-LIGHTING: Cinematic lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+${style ? `STYLE: ${style} style, ${mood ? `${mood} mood, ` : ''}high-quality, cinematic composition` : 'STYLE: High-quality, cinematic composition'}
+TECHNICAL SPECS: ${(style === 'Realistic' || style === 'Photographic') ? 'Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject' : style === 'Cartoon' ? 'Professional 3D cartoon rendering, vibrant colors, stylized features, high detail' : style ? `Professional ${style.toLowerCase()} rendering, high detail, sharp focus` : 'Professional rendering, high detail, sharp focus'}
+LIGHTING: ${(style === 'Realistic' || style === 'Photographic') ? 'Cinematic lighting, balanced exposure, realistic shadows and highlights, natural skin tones' : style === 'Cartoon' ? `Bright, vibrant cartoon lighting with clear shadows and highlights${mood ? `, ${mood.toLowerCase()} atmosphere` : ''}` : style ? `${style.toLowerCase()} lighting appropriate for ${style} style${mood ? `, ${mood.toLowerCase()} atmosphere` : ''}` : `Cinematic lighting${mood ? `, ${mood.toLowerCase()} atmosphere` : ''}`}
 COMPOSITION: Rule of thirds, professional framing, environmental storytelling
-QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
-MOOD: Visually stunning and emotionally engaging
+QUALITY: 4K resolution quality${(style === 'Realistic' || style === 'Photographic') ? ', photojournalistic style' : style === 'Cartoon' ? ', 3D cartoon art style, expressive animated features' : style ? `, ${style.toLowerCase()} art quality` : ''}, authentic expressions
+MOOD: ${mood ? `${mood} emotional atmosphere, ` : ''}Visually stunning and emotionally engaging
 SCENE REQUIREMENTS: This scene should directly fulfill the original user request: "${prompt}". The image should capture the complete story context and scene details provided above.
-IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures. Maintain consistent character age, appearance, and clothing across frames as specified above. Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.`
+IMPORTANT: Generate a complete, cohesive scene${(style === 'Realistic' || style === 'Photographic') ? ' that looks like a real photograph taken by a professional photographer' : style === 'Cartoon' ? ' in 3D cartoon style with vibrant colors and stylized features' : style ? ` in ${style} artistic style` : ' with professional quality'}. Ensure anatomical accuracy, natural proportions, and ${(style === 'Realistic' || style === 'Photographic') ? 'realistic material textures' : style === 'Cartoon' ? 'stylized cartoon textures and features' : 'appropriate material textures for the chosen style'}. Maintain consistent character age, appearance, and clothing across frames as specified above. Generate ONLY family-friendly, appropriate content suitable for all audiences. Avoid any content that could be considered harmful, violent, inappropriate, or offensive.`
             };
         });
 

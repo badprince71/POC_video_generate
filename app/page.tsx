@@ -362,7 +362,9 @@ export default function FrameGenerationPage() {
         },
         body: JSON.stringify({ 
           prompt: enhancedPrompt,
-          frameCount: frameCount 
+          frameCount: frameCount,
+          style: selectedStyle,
+          mood: selectedMood
         }),
       })
       .then((res) => res.json())

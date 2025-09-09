@@ -97,26 +97,36 @@ async function generateSingleImage(request: NextRequest) {
 
         for (let attempt = 0; attempt <= retries; attempt++) {
             try {
-                if (isFirstFrame) {
-                    // First scene: create a realistic photograph from original image
-                    framePrompt = `STYLE: ${styleMoodSuffix} high-quality, ultra-realistic photograph
-TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
-LIGHTING: Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones
+                // Determine if this prompt already contains style information (from story generation)
+                const hasStyleInPrompt = prompt.includes('STYLE:') || prompt.includes('style,');
+                
+                if (hasStyleInPrompt) {
+                    // If the prompt already contains style information from story generation, use it as-is
+                    framePrompt = prompt;
+                } else {
+                    // Legacy behavior: add style information for prompts without story context
+                    const stylePrefix = style && mood ? `${style} style, ${mood} mood, ` : styleMoodSuffix ? `${styleMoodSuffix.slice(2)} ` : '';
+                    const technicalSpecs = (style === 'Realistic' || style === 'Photographic' || !style) ? 
+                        'Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject' : 
+                        style === 'Cartoon' ? 'Professional 3D cartoon rendering, vibrant colors, stylized features, high detail' :
+                        `Professional ${style.toLowerCase()} rendering, high detail, sharp focus`;
+                    const lightingSpecs = (style === 'Realistic' || style === 'Photographic' || !style) ? 
+                        'Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones' : 
+                        style === 'Cartoon' ? `Bright, vibrant cartoon lighting with clear shadows and highlights${mood ? `, ${mood.toLowerCase()} atmosphere` : ''}` :
+                        `${style.toLowerCase()} lighting appropriate for ${style} style${mood ? `, ${mood.toLowerCase()} atmosphere` : ''}`;
+                    const qualitySpecs = (style === 'Realistic' || style === 'Photographic' || !style) ? 
+                        '4K resolution quality, photojournalistic style, authentic human expressions' : 
+                        style === 'Cartoon' ? '4K resolution quality, 3D cartoon art style, expressive animated features' :
+                        `4K resolution quality, ${style.toLowerCase()} art quality, expressive rendering`;
+                        
+                    framePrompt = `STYLE: ${stylePrefix}high-quality${isFirstFrame ? ', ultra-realistic photograph' : ''}
+TECHNICAL SPECS: ${technicalSpecs}
+LIGHTING: ${lightingSpecs}
 FACIAL CONSISTENCY: Maintain subject's EXACT facial features - face shape, eye color, eye shape, nose structure, lip shape, facial bone structure, hair color and texture
 COMPOSITION: Rule of thirds, professional framing, environmental context
-QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
+QUALITY: ${qualitySpecs}
 SCENE: ${prompt}
-IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
-                } else {
-                    // Subsequent scenes: create new realistic photographs from original image
-                    framePrompt = `STYLE: ${styleMoodSuffix} high-quality, ultra-realistic photograph  
-TECHNICAL SPECS: Shot with professional camera, 85mm lens, f/2.8 aperture, natural depth of field, sharp focus on subject
-LIGHTING: Soft natural lighting, balanced exposure, realistic shadows and highlights, natural skin tones
-FACIAL CONSISTENCY: Maintain subject's EXACT facial features - face shape, eye color, eye shape, nose structure, lip shape, facial bone structure, hair color and texture  
-COMPOSITION: Rule of thirds, professional framing, environmental context
-QUALITY: 4K resolution quality, photojournalistic style, authentic human expressions
-SCENE: ${prompt}
-IMPORTANT: Generate a complete, cohesive scene that looks like a real photograph taken by a professional photographer. Ensure anatomical accuracy, natural proportions, and realistic material textures.`;
+IMPORTANT: Generate a complete, cohesive scene${(style === 'Realistic' || style === 'Photographic' || !style) ? ' that looks like a real photograph taken by a professional photographer' : style === 'Cartoon' ? ' in 3D cartoon style with vibrant colors and stylized features' : ` in ${style} artistic style`}. Ensure anatomical accuracy, natural proportions, and ${(style === 'Realistic' || style === 'Photographic' || !style) ? 'realistic material textures' : style === 'Cartoon' ? 'stylized cartoon textures and features' : 'appropriate material textures for the chosen style'}.`;
                 }
                 
                 response = await openai.images.edit({
