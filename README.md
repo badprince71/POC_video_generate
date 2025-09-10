@@ -306,9 +306,9 @@ Generate a single frame with OpenAI image editing.
 {
   "success": true,
   "imageUrl": "https://s3-signed-url...",
-  "proxyUrl": "https://app.com/api/proxy_s3_image/...",
-  "s3Key": "user123/req-abc123/reference-frames/generated_frame_0_1234567890.png",
-  "userId": "user123",
+  "proxyUrl": "/api/proxy_s3_image/...",
+  "s3Key": "public-user/req-abc123/reference-frames/generated_frame_0_1234567890.png",
+  "userId": "public-user",
   "requestId": "req-abc123",
   "frameIndex": 0,
   "totalFrames": 6,
@@ -346,7 +346,7 @@ Generate a video clip from an image using RunwayML.
   "totalClips": 6,
   "duration": 5,
   "s3Key": "user123/req-abc123/video-clips/generated_clip_0_1234567890.mp4",
-  "proxyUrl": "https://app.com/api/proxy_s3_video/...",
+  "proxyUrl": "/api/proxy_s3_video/...",
   "videoUrl": "https://s3-signed-url...",
   "expiresIn": 3600
 }
