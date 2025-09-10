@@ -44,7 +44,7 @@ A comprehensive Next.js application that generates personalized animated videos 
    - Chunked uploads for large files
 
 5. **External Services**
-   - **OpenAI**: Image generation and editing
+   - **OpenAI**: Image generation and editing 
    - **RunwayML**: Video clip generation from images
    - **Supabase Auth**: User authentication and session management
 
