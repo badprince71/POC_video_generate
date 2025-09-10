@@ -1,6 +1,9 @@
-# HTTP 413 Payload Too Large Error - Fix Summary
+ HTTP 413 Payload Too Large Error - Fix Summary
+
 
 ## 🚨 **Critical Issue Identified**
+
+
 
 The error `"HTTP 413: Request Entity Too Large"` and `"FUNCTION_PAYLOAD_TOO_LARGE"` occurred when trying to save frames to the database because:
 
